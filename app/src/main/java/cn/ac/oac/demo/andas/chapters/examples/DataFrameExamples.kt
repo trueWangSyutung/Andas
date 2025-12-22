@@ -276,7 +276,7 @@ object DataFrameExamples {
                     val df = Andas.getInstance().createDataFrame(
                         mapOf(
                             "name" to listOf("Alice", "Bob", "Charlie", "David"),
-                            "age" to listOf(25, 30, 35, 40),
+                            "ages" to listOf(25, 30, 35, 40),
                             "salary" to listOf(50000, 60000, 70000, 80000),
                             "department" to listOf("IT", "HR", "IT", "Finance")
                         )
