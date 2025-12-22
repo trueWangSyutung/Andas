@@ -1,0 +1,337 @@
+package cn.ac.oac.libs.andas
+
+import cn.ac.oac.libs.andas.entity.DataFrame
+import cn.ac.oac.libs.andas.entity.Series
+import org.junit.Test
+import org.junit.Assert.*
+
+/**
+ * 测试 DataFrame 的 get/set 操作符和行访问方法
+ */
+class DataFrameRowTest {
+
+    @Test
+    fun testGetColumnReturnsSeries() {
+        // 创建测试数据
+        val df = DataFrame(mapOf(
+            "name" to listOf("Alice", "Bob", "Charlie"),
+            "age" to listOf(25, 30, 35),
+            "salary" to listOf(50000, 60000, 70000)
+        ))
+
+        // 测试列访问 - 应该返回 Series<Any>
+        val nameSeries = df["name"]
+        assertTrue("列访问应该返回 Series<Any>", nameSeries is Series<*>)
+        assertEquals("name Series 应该包含 3 个元素", 3, nameSeries.size())
+        assertEquals("第一个元素应该是 'Alice'", "Alice", nameSeries[0])
+        assertEquals("第二个元素应该是 'Bob'", "Bob", nameSeries[1])
+        assertEquals("第三个元素应该是 'Charlie'", "Charlie", nameSeries[2])
+
+        val ageSeries = df["age"]
+        assertEquals("age Series 应该包含 3 个元素", 3, ageSeries.size())
+        assertEquals("第一个元素应该是 25", 25, ageSeries[0])
+        assertEquals("第二个元素应该是 30", 30, ageSeries[1])
+        assertEquals("第三个元素应该是 35", 35, ageSeries[2])
+    }
+
+    @Test
+    fun testGetRowReturnsSeriesMap() {
+        val df = DataFrame(mapOf(
+            "name" to listOf("Alice", "Bob", "Charlie"),
+            "age" to listOf(25, 30, 35),
+            "salary" to listOf(50000, 60000, 70000)
+        ))
+
+        // 获取第一行
+        val row = df.getRow(0)
+
+        // 验证返回类型
+        assertTrue("返回类型应该是 Map<String, Series<Any>?>", 
+            row is Map<String, Series<Any>?>)
+
+        // 验证 Series 的内容
+        val nameSeries = row["name"]
+        assertNotNull("name 列不应该为 null", nameSeries)
+        assertEquals("name Series 应该包含 1 个元素", 1, nameSeries!!.size())
+        assertEquals("name Series 的第一个元素应该是 'Alice'", "Alice", nameSeries[0])
+
+        val ageSeries = row["age"]
+        assertNotNull("age 列不应该为 null", ageSeries)
+        assertEquals("age Series 应该包含 1 个元素", 1, ageSeries!!.size())
+        assertEquals("age Series 的第一个元素应该是 25", 25, ageSeries[0])
+    }
+
+    @Test
+    fun testOperatorGetWithInt() {
+        val df = DataFrame(mapOf(
+            "name" to listOf("Alice", "Bob", "Charlie"),
+            "age" to listOf(25, 30, 35)
+        ))
+
+        // 使用 df[0] 获取行
+        val row = df[0]
+
+        // 验证返回类型
+        assertTrue("df[0] 应该返回 Map<String, Series<Any>?>", 
+            row is Map<String, Series<Any>?>)
+
+        // 验证内容
+        val nameSeries = row["name"]
+        assertNotNull("name 列不应该为 null", nameSeries)
+        assertEquals("name 应该是 'Alice'", "Alice", nameSeries!![0])
+    }
+
+    @Test
+    fun testSetColumnWithSeries() {
+        val df = DataFrame(mapOf(
+            "name" to listOf("Alice", "Bob", "Charlie"),
+            "age" to listOf(25, 30, 35)
+        ))
+
+        // 创建新的 Series
+        val newSeries = Series(listOf(50000, 60000, 70000), listOf(0, 1, 2), "salary")
+
+        // 使用 set 操作符设置列
+        df["salary"] = newSeries
+
+        // 验证列已添加
+        assertTrue("salary 列应该存在", df.columns().contains("salary"))
+
+        // 验证数据
+        val salarySeries = df["salary"]
+        assertEquals("salary Series 应该包含 3 个元素", 3, salarySeries.size())
+        assertEquals("第一个元素应该是 50000", 50000, salarySeries[0])
+        assertEquals("第二个元素应该是 60000", 60000, salarySeries[1])
+        assertEquals("第三个元素应该是 70000", 70000, salarySeries[2])
+    }
+
+    @Test
+    fun testSetRowWithMap() {
+        val df = DataFrame(mapOf(
+            "name" to listOf("Alice", "Bob", "Charlie"),
+            "age" to listOf(25, 30, 35),
+            "salary" to listOf(50000, 60000, 70000)
+        ))
+
+        // 使用 set 操作符更新第二行
+        df[1] = mapOf("name" to "David", "age" to 31, "salary" to 65000)
+
+        // 验证更新后的数据
+        val row = df.getRow(1)
+        val nameSeries = row["name"]
+        val ageSeries = row["age"]
+        val salarySeries = row["salary"]
+
+        assertEquals("更新后的 name 应该是 'David'", "David", nameSeries!![0])
+        assertEquals("更新后的 age 应该是 31", 31, ageSeries!![0])
+        assertEquals("更新后的 salary 应该是 65000", 65000, salarySeries!![0])
+    }
+
+    @Test
+    fun testSetRowWithNewColumn() {
+        val df = DataFrame(mapOf(
+            "name" to listOf("Alice", "Bob", "Charlie"),
+            "age" to listOf(25, 30, 35)
+        ))
+
+        // 使用 set 操作符添加新列到特定行
+        df[0] = mapOf("department" to "IT")
+
+        // 验证新列已添加
+        assertTrue("department 列应该存在", df.columns().contains("department"))
+
+        // 验证数据
+        val departmentSeries = df["department"]
+        assertEquals("department Series 应该包含 3 个元素", 3, departmentSeries.size())
+        assertEquals("第一个元素应该是 'IT'", "IT", departmentSeries[0])
+        assertNull("第二个元素应该是 null", departmentSeries[1])
+        assertNull("第三个元素应该是 null", departmentSeries[2])
+    }
+
+    @Test
+    fun testLocAndIloc() {
+        val df = DataFrame(mapOf(
+            "name" to listOf("Alice", "Bob", "Charlie"),
+            "age" to listOf(25, 30, 35)
+        ))
+
+        // 测试 iloc
+        val row1 = df.iloc(1)
+        assertTrue("iloc 应该返回 Map<String, Series<Any>?>", 
+            row1 is Map<String, Series<Any>?>)
+        assertEquals("iloc(1) name 应该是 'Bob'", "Bob", row1["name"]!![0])
+
+        // 测试 loc（假设索引是 0, 1, 2）
+        val row0 = df.loc(0)
+        assertTrue("loc 应该返回 Map<String, Series<Any>?>", 
+            row0 is Map<String, Series<Any>?>)
+        assertEquals("loc(0) name 应该是 'Alice'", "Alice", row0["name"]!![0])
+    }
+
+    @Test
+    fun testFilterWithNewAPI() {
+        val df = DataFrame(mapOf(
+            "name" to listOf("Alice", "Bob", "Charlie"),
+            "age" to listOf(25, 30, 35),
+            "salary" to listOf(50000, 60000, 70000)
+        ))
+
+        // 使用 filter，参数应该是 Map<String, Series<Any>?>
+        val filtered = df.filter { row ->
+            val ageSeries = row["age"]
+            val salarySeries = row["salary"]
+            
+            // 从 Series 中提取值
+            val age = ageSeries?.get(0) as? Int
+            val salary = salarySeries?.get(0) as? Int
+            
+            age != null && salary != null && age > 27 && salary > 55000
+        }
+
+        // 验证结果
+        assertEquals("应该筛选出 1 行", 1, filtered.shape().first)
+        assertEquals("筛选出的应该是 Bob", "Bob", filtered.iloc(0)["name"]?.get(0))
+    }
+
+    @Test
+    fun testSetOperatorWithDifferentTypes() {
+        val df = DataFrame(mapOf(
+            "name" to listOf("Alice", "Bob", "Charlie"),
+            "age" to listOf(25, 30, 35)
+        ))
+
+        // 设置字符串列
+        val stringSeries = Series(listOf("IT", "HR", "Finance"), listOf(0, 1, 2), "department")
+        df["department"] = stringSeries
+
+        // 设置数值列
+        val doubleSeries = Series(listOf(1.5, 2.0, 2.5), listOf(0, 1, 2), "multiplier")
+        df["multiplier"] = doubleSeries
+
+        // 验证
+        assertEquals("department 应该是 IT", "IT", df["department"][0])
+        assertEquals("multiplier 应该是 1.5", 1.5, df["multiplier"][0])
+    }
+
+    @Test
+    fun testSetRowPartialUpdate() {
+        val df = DataFrame(mapOf(
+            "name" to listOf("Alice", "Bob", "Charlie"),
+            "age" to listOf(25, 30, 35),
+            "salary" to listOf(50000, 60000, 70000)
+        ))
+
+        // 只更新部分字段
+        df[1] = mapOf("age" to 31, "salary" to 65000)
+
+        // 验证更新
+        val row = df.getRow(1)
+        assertEquals("name 应该保持不变", "Bob", row["name"]!![0])
+        assertEquals("age 应该更新", 31, row["age"]!![0])
+        assertEquals("salary 应该更新", 65000, row["salary"]!![0])
+    }
+
+    @Test
+    fun testSetColumnSizeMismatch() {
+        val df = DataFrame(mapOf(
+            "name" to listOf("Alice", "Bob", "Charlie"),
+            "age" to listOf(25, 30, 35)
+        ))
+
+        // 尝试设置长度不匹配的 Series
+        val wrongSizeSeries = Series(listOf(1, 2), listOf(0, 1), "test")
+
+        try {
+            df["test"] = wrongSizeSeries
+            fail("应该抛出 IllegalArgumentException")
+        } catch (e: IllegalArgumentException) {
+            // 预期的异常
+            assertTrue("异常消息应该包含长度信息", e.message!!.contains("长度必须一致"))
+        }
+    }
+
+    @Test
+    fun testSetRowInvalidIndex() {
+        val df = DataFrame(mapOf(
+            "name" to listOf("Alice", "Bob", "Charlie"),
+            "age" to listOf(25, 30, 35)
+        ))
+
+        // 尝试更新不存在的行
+        try {
+            df[10] = mapOf("name" to "Invalid")
+            fail("应该抛出 IndexOutOfBoundsException")
+        } catch (e: IndexOutOfBoundsException) {
+            // 预期的异常
+            assertTrue("异常消息应该包含索引信息", e.message!!.contains("超出范围"))
+        }
+    }
+
+    @Test
+    fun testGetColumnNonExistent() {
+        val df = DataFrame(mapOf(
+            "name" to listOf("Alice", "Bob", "Charlie"),
+            "age" to listOf(25, 30, 35)
+        ))
+
+        // 尝试访问不存在的列
+        try {
+            val nonExistent = df["non_existent"]
+            fail("应该抛出 IllegalArgumentException")
+        } catch (e: IllegalArgumentException) {
+            // 预期的异常
+            assertTrue("异常消息应该包含列名", e.message!!.contains("不存在"))
+        }
+    }
+
+    @Test
+    fun testSetColumnOverwrite() {
+        val df = DataFrame(mapOf(
+            "name" to listOf("Alice", "Bob", "Charlie"),
+            "age" to listOf(25, 30, 35)
+        ))
+
+        // 覆盖现有列
+        val newAgeSeries = Series(listOf(26, 31, 36), listOf(0, 1, 2), "age")
+        df["age"] = newAgeSeries
+
+        // 验证覆盖成功
+        val ageSeries = df["age"]
+        assertEquals("年龄应该被覆盖", 26, ageSeries[0])
+        assertEquals("年龄应该被覆盖", 31, ageSeries[1])
+        assertEquals("年龄应该被覆盖", 36, ageSeries[2])
+    }
+
+    @Test
+    fun testComplexUsage() {
+        // 创建 DataFrame
+        val df = DataFrame(mapOf(
+            "name" to listOf("Alice", "Bob", "Charlie"),
+            "age" to listOf(25, 30, 35),
+            "salary" to listOf(50000, 60000, 70000)
+        ))
+
+        // 1. 获取列数据
+        val names = df["name"]
+        assertEquals("Alice", names[0])
+
+        // 2. 更新行数据
+        df[1] = mapOf("age" to 31, "salary" to 65000)
+
+        // 3. 添加新列
+        val bonusSeries = Series(listOf(5000, 6000, 7000), listOf(0, 1, 2), "bonus")
+        df["bonus"] = bonusSeries
+
+        // 4. 筛选数据
+        val filtered = df.filter { row ->
+            val age = row["age"]?.get(0) as? Int
+            val salary = row["salary"]?.get(0) as? Int
+            age != null && salary != null && age > 27
+        }
+
+        // 验证结果
+        assertEquals("应该有 2 行数据", 2, filtered.shape().first)
+        assertEquals("第一行应该是 Bob", "Bob", filtered.iloc(0)["name"]?.get(0))
+        assertEquals("第二行应该是 Charlie", "Charlie", filtered.iloc(1)["name"]?.get(0))
+    }
+}

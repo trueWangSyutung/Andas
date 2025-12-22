@@ -1,0 +1,523 @@
+package cn.ac.oac.libs.andas
+
+import cn.ac.oac.libs.andas.entity.DataFrame
+import cn.ac.oac.libs.andas.entity.Series
+import cn.ac.oac.libs.andas.core.AndaThreadPool
+import cn.ac.oac.libs.andas.core.asyncIO
+import cn.ac.oac.libs.andas.core.asyncCompute
+import org.junit.After
+import org.junit.Before
+import org.junit.Test
+import java.io.File
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+import kotlin.test.assertFalse
+import kotlin.test.assertNull
+import kotlin.test.assertNotNull
+import kotlin.test.assertFailsWith
+
+/**
+ * Andas SDK核心功能单元测试
+ * 遵循测试驱动开发(TDD)原则，确保代码质量和稳定性
+ */
+class AndasCoreTest {
+    
+    private lateinit var testDir: File
+    
+    @Before
+    fun setUp() {
+        // 创建测试目录
+        testDir = File("test_output")
+        if (!testDir.exists()) {
+            testDir.mkdirs()
+        }
+    }
+    
+    @After
+    fun tearDown() {
+        // 清理测试文件
+        testDir.listFiles()?.forEach { it.delete() }
+        testDir.delete()
+    }
+    
+    // ==================== Series 测试 ====================
+    
+    @Test
+    fun testSeriesCreation() {
+        val series = Series<Int>(listOf(1, 2, 3, 4, 5))
+        assertEquals(5, series.size())
+        assertEquals(5, series.shape())
+        assertNull(series.name())
+        assertEquals(listOf(0, 1, 2, 3, 4), series.index())
+        assertEquals(listOf(1, 2, 3, 4, 5), series.values())
+    }
+    
+    @Test
+    fun testSeriesWithCustomIndex() {
+        val series = Series<Int>(
+            listOf(10, 20, 30),
+            listOf("a", "b", "c"),
+            "test"
+        )
+        assertEquals(3, series.size())
+        assertEquals("test", series.name())
+        assertEquals(listOf("a", "b", "c"), series.index())
+        assertEquals(20, series["b"])
+    }
+    
+    @Test
+    fun testSeriesFromMap() {
+        val map = mapOf("x" to 1, "y" to 2, "z" to 3)
+        val series = Series(map, "coords")
+        assertEquals(3, series.size())
+        assertEquals(1, series["x"])
+        assertEquals(2, series["y"])
+        assertEquals(3, series["z"])
+    }
+    
+    @Test
+    fun testSeriesAccess() {
+        val series = Series<Int>(listOf(1, 2, 3, 4, 5))
+        assertEquals(3, series[2])
+        
+        val series2 = Series<Int>(
+            listOf(10, 20, 30),
+            listOf("a", "b", "c")
+        )
+        assertEquals(20, series2["b"])
+    }
+    
+    @Test
+    fun testSeriesHeadTail() {
+        val series = Series<Int>((1..10).toList())
+        val head = series.head(3)
+        val tail = series.tail(3)
+        
+        assertEquals(listOf(1, 2, 3), head.values())
+        assertEquals(listOf(8, 9, 10), tail.values())
+    }
+    
+    @Test
+    fun testSeriesNullHandling() {
+        val series = Series<Int?>(listOf(1, null, 3, null, 5))
+        
+        val isNull = series.isnull()
+        assertEquals(listOf(false, true, false, true, false), isNull.values())
+        
+        val notNull = series.notnull()
+        assertEquals(listOf(true, false, true, false, true), notNull.values())
+        
+        val dropped = series.dropna()
+        assertEquals(listOf(1, 3, 5), dropped.values())
+        
+        val filled = series.fillna(0)
+        assertEquals(listOf(1, 0, 3, 0, 5), filled.values())
+    }
+    
+    @Test
+    fun testSeriesStatistics() {
+        val series = Series<String>(listOf("a", "b", "a", "c", "b", "a"))
+        
+        val unique = series.unique()
+        assertEquals(setOf("a", "b", "c"), unique.toSet())
+        
+        val counts = series.valueCounts()
+        assertEquals(3, counts["a"])
+        assertEquals(2, counts["b"])
+        assertEquals(1, counts["c"])
+    }
+    
+    @Test
+    fun testSeriesMapping() {
+        val series = Series<Int>(listOf(1, 2, 3, 4, 5))
+        val mapped = series.map { it?.times(2) }
+        assertEquals(listOf(2, 4, 6, 8, 10), mapped.values())
+    }
+    
+    @Test
+    fun testSeriesFiltering() {
+        val series = Series<Int>(listOf(1, 2, 3, 4, 5))
+        val filtered = series.filter { it != null && it > 3 }
+        assertEquals(listOf(4, 5), filtered.values())
+    }
+    
+    @Test
+    fun testSeriesSorting() {
+        val series = Series<Int>(
+            listOf(3, 1, 4, 2, 5),
+            listOf("c", "a", "d", "b", "e")
+        )
+        
+        val sortedByIndex = series.sortIndex()
+        assertEquals(listOf("a", "b", "c", "d", "e"), sortedByIndex.index())
+        
+        val sortedByValue = series.sortValues()
+        assertEquals(listOf(1, 2, 3, 4, 5), sortedByValue.values())
+    }
+    
+    @Test
+    fun testSeriesArithmetic() {
+        val series = Series<Int>(listOf(1, 2, 3, 4, 5))
+        val doubled = series * 2
+        assertEquals(listOf(2, 4, 6, 8, 10), doubled.values())
+    }
+    
+    @Test
+    fun testSeriesCumsum() {
+        val series = Series(listOf(1.0, 2.0, 3.0, 4.0, 5.0))
+        val cumsum = series.cumsum()
+        assertEquals(listOf(1.0, 3.0, 6.0, 10.0, 15.0), cumsum.values())
+    }
+    
+    @Test
+    fun testSeriesConversion() {
+        val series = Series(
+            listOf(1, 2, 3),
+            listOf("a", "b", "c")
+        )
+        
+        val list = series.toList()
+        assertEquals(listOf(1, 2, 3), list)
+        
+        val map = series.toMap()
+        assertEquals(mapOf("a" to 1, "b" to 2, "c" to 3), map)
+    }
+    
+    // ==================== DataFrame 测试 ====================
+    
+    @Test
+    fun testDataFrameCreation() {
+        val df = DataFrame(mapOf(
+            "name" to listOf("Alice", "Bob"),
+            "age" to listOf(25, 30)
+        ))
+        
+        assertEquals(2, df.shape().first)
+        assertEquals(2, df.shape().second)
+        assertEquals(listOf("name", "age"), df.columns())
+    }
+    
+    @Test
+    fun testDataFrameFromRows() {
+        val rows = listOf(
+            mapOf("name" to "Alice", "age" to 25),
+            mapOf("name" to "Bob", "age" to 30)
+        )
+        val df = DataFrame(rows)
+        
+        assertEquals(2, df.shape().first)
+        assertEquals(2, df.shape().second)
+    }
+    
+    @Test
+    fun testDataFrameAccess() {
+        val df = DataFrame(mapOf(
+            "name" to listOf("Alice", "Bob", "Charlie"),
+            "age" to listOf(25, 30, 35)
+        ))
+        
+        // 测试行访问
+        val row1 = df.iloc(0)
+        assertEquals("Alice", row1["name"])
+        assertEquals(25, row1["age"])
+        
+        // 测试单元格访问
+        assertEquals("Bob", df.at(1, "name"))
+        assertEquals(30, df.at(1, "age"))
+    }
+    
+    @Test
+    fun testDataFrameHeadTail() {
+        val df = DataFrame(mapOf(
+            "id" to (1..10).toList()
+        ))
+        
+        val head = df.head(3)
+        assertEquals(3, head.shape().first)
+        
+        val tail = df.tail(3)
+        assertEquals(3, tail.shape().first)
+    }
+    
+    @Test
+    fun testDataFrameSelection() {
+        val df = DataFrame(mapOf(
+            "a" to listOf(1, 2, 3),
+            "b" to listOf(4, 5, 6),
+            "c" to listOf(7, 8, 9)
+        ))
+        
+        val selected = df.selectColumns("a", "c")
+        assertEquals(listOf("a", "c"), selected.columns())
+        assertEquals(2, selected.shape().second)
+    }
+    
+    @Test
+    fun testDataFrameFiltering() {
+        val df = DataFrame(mapOf(
+            "age" to listOf(20, 30, 40, 50),
+            "name" to listOf("A", "B", "C", "D")
+        ))
+        
+        val filtered = df.filter { row ->
+            (row["age"] as Int) > 25
+        }
+        
+        assertEquals(3, filtered.shape().first)
+        assertEquals(listOf("B", "C", "D"), filtered.iloc(0)["name"])
+    }
+    
+    @Test
+    fun testDataFrameNullHandling() {
+        val df = DataFrame(mapOf(
+            "a" to listOf(1, null, 3),
+            "b" to listOf(4, 5, null)
+        ))
+        
+        val dropped = df.dropna()
+        assertEquals(1, dropped.shape().first)
+        
+        val filled = df.fillna(0)
+        assertEquals(listOf(0, 0), filled.iloc(1).values.toList())
+    }
+    
+    @Test
+    fun testDataFrameGroupBy() {
+        val df = DataFrame(mapOf(
+            "department" to listOf("IT", "HR", "IT", "Finance"),
+            "salary" to listOf(50000, 60000, 70000, 80000)
+        ))
+        
+        val grouped = df.groupBy("department").sum()
+        
+        // 验证分组结果
+        assertTrue(grouped.shape().first > 0)
+    }
+    
+    @Test
+    fun testDataFrameAggregation() {
+        val df = DataFrame(mapOf(
+            "value" to listOf(10, 20, 30, 40)
+        ))
+        
+        val result = df.agg(mapOf(
+            "sum" to "sum",
+            "mean" to "mean",
+            "max" to "max"
+        ))
+        
+        assertEquals(3, result.shape().first) // 3个统计指标
+    }
+    
+    @Test
+    fun testDataFrameSorting() {
+        val df = DataFrame(mapOf(
+            "id" to listOf(3, 1, 4, 2),
+            "name" to listOf("C", "A", "D", "B")
+        ))
+        
+        val sorted = df.sortValues("id")
+        assertEquals(1, sorted.iloc(0)["id"])
+        assertEquals(4, sorted.iloc(3)["id"])
+    }
+    
+    @Test
+    fun testDataFrameRename() {
+        val df = DataFrame(mapOf(
+            "old" to listOf(1, 2, 3)
+        ))
+        
+        val renamed = df.rename(mapOf("old" to "new"))
+        assertEquals(listOf("new"), renamed.columns())
+    }
+    
+    @Test
+    fun testDataFrameAddDropColumns() {
+        val df = DataFrame(mapOf(
+            "a" to listOf(1, 2, 3)
+        ))
+        
+        val withB = df.addColumn("b", listOf(4, 5, 6))
+        assertEquals(listOf("a", "b"), withB.columns())
+        
+        val withoutA = withB.dropColumns("a")
+        assertEquals(listOf("b"), withoutA.columns())
+    }
+    
+    @Test
+    fun testDataFrameMerge() {
+        val df1 = DataFrame(mapOf(
+            "id" to listOf(1, 2, 3),
+            "value1" to listOf(10, 20, 30)
+        ))
+        
+        val df2 = DataFrame(mapOf(
+            "id" to listOf(2, 3, 4),
+            "value2" to listOf(200, 300, 400)
+        ))
+        
+        val merged = df1.merge(df2, on = "id")
+        
+        // 应该有2行匹配（id=2和id=3）
+        assertTrue(merged.shape().first > 0)
+    }
+    
+    // ==================== I/O 测试 ====================
+    
+    @Test
+    fun testCSVReadWrite() {
+        val df = DataFrame(mapOf(
+            "name" to listOf("Alice", "Bob", "Charlie"),
+            "age" to listOf(25, 30, 35),
+            "salary" to listOf(50000, 60000, 70000)
+        ))
+        
+        val csvFile = File(testDir, "test.csv")
+        
+        // 写入
+        df.toCSV(csvFile)
+        assertTrue(csvFile.exists())
+        assertTrue(csvFile.length() > 0)
+        
+        // 读取
+        val dfRead = DataFrame.readCSV(csvFile)
+        assertEquals(df.shape(), dfRead.shape())
+        assertEquals(df.columns(), dfRead.columns())
+    }
+    
+    @Test
+    fun testCSVWithCustomDelimiter() {
+        val df = DataFrame(mapOf(
+            "a" to listOf(1, 2, 3),
+            "b" to listOf(4, 5, 6)
+        ))
+        
+        val tsvFile = File(testDir, "test.tsv")
+        df.toCSV(tsvFile) // 默认逗号分隔
+        
+        val read = DataFrame.readCSV(tsvFile)
+        assertEquals(df.shape(), read.shape())
+    }
+    
+    // ==================== 异常处理测试 ====================
+    
+    @Test
+    fun testExceptionHandling() {
+        // 测试无效索引
+        val series = Series(listOf(1, 2, 3))
+        assertFailsWith<IndexOutOfBoundsException> {
+            series[10]
+        }
+        
+        // 测试不存在的列
+        val df = DataFrame(mapOf("a" to listOf(1, 2, 3)))
+        assertFailsWith<IllegalArgumentException> {
+            df.selectColumns("nonexistent")
+        }
+        
+        // 测试长度不匹配
+        assertFailsWith<IllegalArgumentException> {
+            DataFrame(mapOf(
+                "a" to listOf(1, 2, 3),
+                "b" to listOf(1, 2) // 长度不匹配
+            ))
+        }
+    }
+    
+    // ==================== 性能测试 ====================
+    
+    @Test
+    fun testPerformanceLargeDataset() {
+        val size = 10000
+        
+        // 测试Series创建性能
+        val start1 = System.currentTimeMillis()
+        val series = Series((1..size).toList())
+        val time1 = System.currentTimeMillis() - start1
+        
+        assertTrue(time1 < 1000, "Series创建耗时: ${time1}ms")
+        
+        // 测试DataFrame创建性能
+        val start2 = System.currentTimeMillis()
+        val df = DataFrame(mapOf(
+            "col1" to (1..size).toList(),
+            "col2" to (1..size).map { it * 2 },
+            "col3" to (1..size).map { it.toString() }
+        ))
+        val time2 = System.currentTimeMillis() - start2
+        
+        assertTrue(time2 < 2000, "DataFrame创建耗时: ${time2}ms")
+        
+        // 测试过滤性能
+        val start3 = System.currentTimeMillis()
+        val filtered = df.filter { row ->
+            (row["col1"] as Int) > size / 2
+        }
+        val time3 = System.currentTimeMillis() - start3
+        
+        assertTrue(time3 < 1000, "过滤操作耗时: ${time3}ms")
+    }
+}
+
+/**
+ * 异步操作测试类
+ */
+class AsyncOperationsTest {
+    
+    @Test
+    fun testAsyncIO() {
+        val latch = CountDownLatch(1)
+        var result: String? = null
+        var error: Throwable? = null
+        
+        asyncIO {
+            Thread.sleep(100) // 模拟耗时操作
+            "completed"
+        }.onSuccess {
+            result = it
+            latch.countDown()
+        }.onError {
+            error = it
+            latch.countDown()
+        }
+        
+        assertTrue(latch.await(2, TimeUnit.SECONDS))
+        assertNull(error)
+        assertEquals("completed", result)
+    }
+    
+    @Test
+    fun testAsyncCompute() {
+        val latch = CountDownLatch(1)
+        var result: Int? = null
+        
+        asyncCompute {
+            (1..1000).sum()
+        }.onSuccess {
+            result = it
+            latch.countDown()
+        }
+        
+        assertTrue(latch.await(1, TimeUnit.SECONDS))
+        assertEquals(500500, result)
+    }
+    
+    @Test
+    fun testAsyncErrorHandling() {
+        val latch = CountDownLatch(1)
+        var error: Throwable? = null
+        
+        asyncIO {
+            throw RuntimeException("Test error")
+        }.onError {
+            error = it
+            latch.countDown()
+        }
+        
+        assertTrue(latch.await(1, TimeUnit.SECONDS))
+        assertNotNull(error)
+        assertEquals("Test error", error?.message)
+    }
+}
