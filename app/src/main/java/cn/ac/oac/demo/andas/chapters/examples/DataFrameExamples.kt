@@ -16,7 +16,8 @@ object DataFrameExamples {
             headTail(),
             filter(),
             select(),
-            stats()
+            stats(),
+            chainOperations()
         )
     }
     
@@ -237,6 +238,66 @@ object DataFrameExamples {
                     callback("✅ 统计计算测试\n数学成绩统计: $mathStats\n数学平均值: $mathMean\n数学总和: $mathSum\n相关系数:$corr")
                 } catch (e: Exception) {
                     callback("❌ 统计失败: ${e.message}")
+                }
+            }
+        )
+    }
+    
+    private fun chainOperations(): Example {
+        return Example(
+            id = "df_chain_operations",
+            title = "3.7 链式操作",
+            description = "DataFrame 链式操作：筛选、新增列、分组聚合",
+            code = """
+                val df = Andas.getInstance().createDataFrame(
+                    mapOf(
+                        "name" to listOf("Alice", "Bob", "Charlie", "David"),
+                        "age" to listOf(25, 30, 35, 40),
+                        "salary" to listOf(50000, 60000, 70000, 80000),
+                        "department" to listOf("IT", "HR", "IT", "Finance")
+                    )
+                )
+                
+                val result = df
+                        .filter { it["ages"]?.get(0) as Int > 25 }
+                        .addColumn("category") { row ->
+                            val age = row["ages"] as Int
+                            when (age) {
+                                in 20..29 -> "青年"
+                                in 30..39 -> "中年"
+                                else -> "其他"
+                            }
+                        }
+                        .groupBy("category")
+                        .agg(mapOf("salary" to "mean"))
+            """.trimIndent(),
+            action = { context, callback ->
+                try {
+                    val df = Andas.getInstance().createDataFrame(
+                        mapOf(
+                            "name" to listOf("Alice", "Bob", "Charlie", "David"),
+                            "age" to listOf(25, 30, 35, 40),
+                            "salary" to listOf(50000, 60000, 70000, 80000),
+                            "department" to listOf("IT", "HR", "IT", "Finance")
+                        )
+                    )
+
+                    val result = df
+                        .filter { it["ages"]?.get(0) as Int > 25 }
+                        .addColumn("category") { row ->
+                            val age = row["ages"] as Int
+                            when (age) {
+                                in 20..29 -> "青年"
+                                in 30..39 -> "中年"
+                                else -> "其他"
+                            }
+                        }
+                        .groupBy("category")
+                        .agg(mapOf("salary" to "mean"))
+                    
+                    callback("✅ 链式操作成功\n结果:\n$result")
+                } catch (e: Exception) {
+                    callback("❌ 链式操作失败: ${e.message}")
                 }
             }
         )
