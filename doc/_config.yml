@@ -1,0 +1,33 @@
+title: Andas SDK
+lang: zh-CN
+description: Android 数据分析系统 - 高性能数据处理库
+
+remote_theme: rundocs/jekyll-rtd-theme
+
+readme_index:
+  with_frontmatter: true
+
+exclude:
+  - Makefile
+  - CNAME
+  - Gemfile
+  - Gemfile.lock
+  - .git
+  - .gitignore
+
+# 导航配置
+nav:
+  - title: "首页"
+    url: "/"
+  - title: "SDK 初始化"
+    url: "/charter1/"
+  - title: "Series API"
+    url: "/charter2/"
+  - title: "DataFrame API"
+    url: "/charter3/"
+  - title: "异步操作"
+    url: "/charter4/"
+  - title: "JNI 原生 API"
+    url: "/charter5/"
+  - title: "性能优化"
+    url: "/charter6/"
