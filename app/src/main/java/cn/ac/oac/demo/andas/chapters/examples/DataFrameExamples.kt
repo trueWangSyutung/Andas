@@ -67,7 +67,6 @@ object DataFrameExamples {
                 
                 val shape = df.shape()          // (3, 2)
                 val columns = df.columns()      // ["name", "age"]
-                val info = df.info()            // 详细信息
             """.trimIndent(),
             action = { context, callback ->
                 try {
@@ -79,8 +78,7 @@ object DataFrameExamples {
                     )
                     val shape = df.shape()
                     val columns = df.columns()
-                    val info = df.info()
-                    callback("✅ DataFrame 信息\n形状: $shape\n列: $columns\n信息: $info")
+                    callback("✅ DataFrame 信息\n形状: $shape\n列: $columns\n$df")
                 } catch (e: Exception) {
                     callback("❌ 获取信息失败: ${e.message}")
                 }
@@ -232,8 +230,8 @@ object DataFrameExamples {
                         )
                     )
                     val mathStats = df["math"]?.describe()
-                    val mathMean = df.meanNative("math")
-                    val mathSum = df.sumNative("math")
+                    val mathMean = df.sum("math")
+                    val mathSum = df.sum("math")
                     val corr = df.corr()
                     callback("✅ 统计计算测试\n数学成绩统计: $mathStats\n数学平均值: $mathMean\n数学总和: $mathSum\n相关系数:$corr")
                 } catch (e: Exception) {

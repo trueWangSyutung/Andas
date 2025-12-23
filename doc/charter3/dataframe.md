@@ -90,23 +90,6 @@ val dtypes = df.dtypes()
 println("数据类型:\n$dtypes")
 ```
 
-#### 3.3.2 查看详细信息
-
-```kotlin
-// 查看详细信息（新增功能）
-val info = df.info()
-println("DataFrame 信息:\n$info")
-// 输出:
-// RangeIndex: 0 to 3, total 4 entries
-// Data columns (total 3 columns):
-//  Column   Non-Null Count   Dtype     
-// -------------------------------------
-//  name     4 / 4            String    
-//  age      4 / 4            Int       
-//  salary   4 / 4            Int       
-// 
-// Memory usage: ~240 B
-```
 
 ### 3.4 数据选择
 
