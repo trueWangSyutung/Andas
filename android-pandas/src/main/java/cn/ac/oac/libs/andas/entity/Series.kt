@@ -197,7 +197,7 @@ class Series<T> {
 
     /**
      * 点积运算（仅适用于数值类型）
-     * 
+     *
      * @param other 另一个Series
      * @return 点积结果
      */
@@ -226,7 +226,7 @@ class Series<T> {
 
     /**
      * 范数运算（仅适用于数值类型）
-     * 
+     *
      * @return 范数值
      */
     fun norm(): Double {
@@ -245,7 +245,7 @@ class Series<T> {
 
     /**
      * 基准测试方法
-     * 
+     *
      * @param operationType 操作类型
      * @param dataSize 数据大小
      * @return 耗时（毫秒）

@@ -10,41 +10,41 @@ import cn.ac.oac.libs.andas.andasSeriesFromMap
  * 第二章：Series API 示例
  */
 object SeriesExamples {
-    
+
     fun getExamples(): List<Example> {
         return listOf(
             // 创建
             createList(),
             createMap(),
             createWithFactory(),
-            
+
             // 访问
             accessData(),
             viewData(),
-            
+
             // 空值处理
             nullHandling(),
             nullHandlingNative(),
-            
+
             // 统计
             statistics(),
             uniqueCount(),
-            
+
             // 变换
             filterData(),
             sortData(),
             operations(),
-            
+
             // 高性能操作
             batchProcessing(),
             sampling(),
             vectorizedOps(),
-            
+
             // 状态检查
             nativeStatus()
         )
     }
-    
+
     private fun createList(): Example {
         return Example(
             id = "series_create_list",
@@ -76,7 +76,7 @@ object SeriesExamples {
             }
         )
     }
-    
+
     private fun createMap(): Example {
         return Example(
             id = "series_create_map",
@@ -109,7 +109,7 @@ object SeriesExamples {
             }
         )
     }
-    
+
     private fun createWithFactory(): Example {
         return Example(
             id = "series_create_factory",
@@ -135,7 +135,7 @@ object SeriesExamples {
             }
         )
     }
-    
+
     private fun accessData(): Example {
         return Example(
             id = "series_access",
@@ -168,7 +168,7 @@ object SeriesExamples {
             }
         )
     }
-    
+
     private fun viewData(): Example {
         return Example(
             id = "series_head_tail",
@@ -196,7 +196,7 @@ object SeriesExamples {
             }
         )
     }
-    
+
     private fun nullHandling(): Example {
         return Example(
             id = "series_null_handling",
@@ -224,7 +224,7 @@ object SeriesExamples {
             }
         )
     }
-    
+
     private fun nullHandlingNative(): Example {
         return Example(
             id = "series_null_handling_native",
@@ -250,7 +250,7 @@ object SeriesExamples {
             }
         )
     }
-    
+
     private fun statistics(): Example {
         return Example(
             id = "series_statistics",
@@ -284,7 +284,7 @@ object SeriesExamples {
             }
         )
     }
-    
+
     private fun uniqueCount(): Example {
         return Example(
             id = "series_unique_count",
@@ -308,7 +308,7 @@ object SeriesExamples {
             }
         )
     }
-    
+
     private fun filterData(): Example {
         return Example(
             id = "series_filter",
@@ -335,7 +335,7 @@ object SeriesExamples {
             }
         )
     }
-    
+
     private fun sortData(): Example {
         return Example(
             id = "series_sort",
@@ -369,7 +369,7 @@ object SeriesExamples {
             }
         )
     }
-    
+
     private fun operations(): Example {
         return Example(
             id = "series_operations",
@@ -397,7 +397,7 @@ object SeriesExamples {
             }
         )
     }
-    
+
     private fun batchProcessing(): Example {
         return Example(
             id = "series_batch_processing",
@@ -420,7 +420,7 @@ object SeriesExamples {
             }
         )
     }
-    
+
     private fun sampling(): Example {
         return Example(
             id = "series_sampling",
@@ -442,7 +442,7 @@ object SeriesExamples {
             }
         )
     }
-    
+
     private fun vectorizedOps(): Example {
         return Example(
             id = "series_vectorized_ops",
@@ -474,7 +474,7 @@ object SeriesExamples {
             }
         )
     }
-    
+
     private fun nativeStatus(): Example {
         return Example(
             id = "series_native_status",
