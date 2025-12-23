@@ -126,6 +126,138 @@ class Series<T> {
 
         return Series(resultData, index, name, dtype)
     }
+
+    /**
+     * 向量加法运算（仅适用于数值类型）
+     * 
+     * @param other 另一个Series
+     * @return 加法结果的新Series
+     */
+    operator fun plus(other: Series<*>): Series<Double> {
+        if (this.size() != other.size()) {
+            throw IllegalArgumentException("两个Series的大小必须相同才能进行加法运算")
+        }
+
+        val resultData = this.data.zip(other.data) { a, b ->
+            when {
+                a is Number && b is Number -> a.toDouble() + b.toDouble()
+                a == null || b == null -> null
+                else -> throw IllegalArgumentException("不支持的类型进行加法运算")
+            }
+        }
+
+        return Series(resultData, this.index, this.name)
+    }
+
+
+    /**
+     * 向量减法运算（仅适用于数值类型）
+     *
+     * @param other 另一个Series
+     * @return 加法结果的新Series
+     */
+    operator fun minus(other: Series<*>): Series<Double> {
+        if (this.size() != other.size()) {
+            throw IllegalArgumentException("两个Series的大小必须相同才能进行加法运算")
+        }
+
+        val resultData = this.data.zip(other.data) { a, b ->
+            when {
+                a is Number && b is Number -> a.toDouble() - b.toDouble()
+                a == null || b == null -> null
+                else -> throw IllegalArgumentException("不支持的类型进行加法运算")
+            }
+        }
+
+        return Series(resultData, this.index, this.name)
+    }
+
+    /**
+     * 乘法法运算（仅适用于数值类型）
+     * 当且仅当 v1(1,2,3) v2(2,3,4) -> v1*v2 = (2,6,12)
+     *
+     * @param other 另一个Series
+     * @return 加法结果的新Series
+     */
+    operator fun times(other: Series<*>): Series<Double> {
+        if (this.size() != other.size()) {
+            throw IllegalArgumentException("两个Series的大小必须相同才能进行加法运算")
+        }
+
+        val resultData = this.data.zip(other.data) { a, b ->
+            when {
+                a is Number && b is Number -> a.toDouble() * b.toDouble()
+                a == null || b == null -> null
+                else -> throw IllegalArgumentException("不支持的类型进行加法运算")
+            }
+        }
+
+        return Series(resultData, this.index, this.name)
+    }
+
+    /**
+     * 点积运算（仅适用于数值类型）
+     * 
+     * @param other 另一个Series
+     * @return 点积结果
+     */
+    fun dot(other: Series<*>): Double {
+        if (this.size() != other.size()) {
+            throw IllegalArgumentException("两个Series的大小必须相同才能进行点积运算")
+        }
+
+        val doubleArray1 = this.data
+            .filterNotNull()
+            .map { (it as Number).toDouble() }
+            .toDoubleArray()
+
+        val doubleArray2 = other.data
+            .filterNotNull()
+            .map { (it as Number).toDouble() }
+            .toDoubleArray()
+
+        return if (this.isNativeAvailable()) {
+            NativeMath.dotProduct(doubleArray1, doubleArray2)
+        } else {
+            // 回退到Kotlin实现
+            doubleArray1.zip(doubleArray2) { a, b -> a * b }.sum()
+        }
+    }
+
+    /**
+     * 范数运算（仅适用于数值类型）
+     * 
+     * @return 范数值
+     */
+    fun norm(): Double {
+        val doubleArray = data
+            .filterNotNull()
+            .map { (it as Number).toDouble() }
+            .toDoubleArray()
+
+        return if (this.isNativeAvailable()) {
+            NativeMath.norm(doubleArray)
+        } else {
+            // 回退到Kotlin实现
+            Math.sqrt(doubleArray.sumOf { it * it })
+        }
+    }
+
+    /**
+     * 基准测试方法
+     * 
+     * @param operationType 操作类型
+     * @param dataSize 数据大小
+     * @return 耗时（毫秒）
+     */
+    fun benchmarkOperation(operationType: Int, dataSize: Int): Long {
+        return try {
+            NativeMath.Benchmark.measureOperationTime(operationType, dataSize)
+        } catch (e: Exception) {
+            // 如果原生库不可用，返回-1
+            -1L
+        }
+    }
     /**
      * 复制Series，可选修改属性
      */
@@ -378,7 +510,7 @@ class Series<T> {
     override fun toString(): String {
         val builder = StringBuilder()
         for (i in 0 until kotlin.math.min(10, data.size)) {  // 最多显示10项
-            builder.append("${index[i]}\t${data[i]}\n")
+            builder.append("${index[i]} \t\t ${data[i]}\n")
         }
         
         if (data.size > 10) {
