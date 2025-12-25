@@ -32,7 +32,8 @@ import cn.ac.oac.demo.andas.chapters.Example
 @Composable
 fun ChapterSelectionScreen(
     chapters: List<ChapterInfo>,
-    onChapterClick: (String) -> Unit
+    onChapterClick: (String) -> Unit,
+    onPaperExperimentClick: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -40,21 +41,82 @@ fun ChapterSelectionScreen(
             .background(Color(0xFFF5F5F5))
             .padding(16.dp)
     ) {
-        Text(
-            text = "Andas SDK Demo",
-            style = MaterialTheme.typography.headlineLarge,
-            fontWeight = FontWeight.Bold,
-            color = Color(0xFF1976D2),
-            modifier = Modifier.padding(bottom = 8.dp)
-        )
+        // 标题区域
+        Column(modifier = Modifier.padding(bottom = 24.dp)) {
+            Text(
+                text = "Andas SDK Demo",
+                style = MaterialTheme.typography.headlineLarge,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFF1976D2),
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+            
+            Text(
+                text = "选择章节开始学习",
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color.Gray
+            )
+        }
         
-        Text(
-            text = "选择章节开始学习",
-            style = MaterialTheme.typography.bodyMedium,
-            color = Color.Gray,
-            modifier = Modifier.padding(bottom = 24.dp)
-        )
+        // 论文实验按钮（置顶显示）
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onPaperExperimentClick() }
+                .padding(bottom = 16.dp),
+            elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+            shape = RoundedCornerShape(12.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF4CAF50))
+        ) {
+            Row(
+                modifier = Modifier
+                    .padding(16.dp)
+                    .fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // 图标
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .background(Color(0xFFFFFFFF), RoundedCornerShape(8.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "🔬",
+                        fontSize = 24.sp
+                    )
+                }
+                
+                Spacer(modifier = Modifier.width(16.dp))
+                
+                // 文字信息
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "论文实验：JVM与Python一致性验证",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                    Text(
+                        text = "JVM大小对比与Python一致性实验",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color(0xFFE8F5E9),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                
+                // 箭头
+                Icon(
+                    imageVector = Icons.Default.ArrowBack,
+                    contentDescription = "进入",
+                    tint = Color.White,
+                    modifier = Modifier.rotate(180f)
+                )
+            }
+        }
         
+        // 章节列表
         LazyColumn(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {

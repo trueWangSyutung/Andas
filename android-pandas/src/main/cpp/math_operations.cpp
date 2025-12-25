@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <functional>
 #include <limits>
+#include <omp.h>
 
 #define LOG_TAG "AndasMath"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
@@ -23,6 +24,7 @@ Java_cn_ac_oac_libs_andas_core_NativeMath_multiplyDoubleArray(
     jdoubleArray result = env->NewDoubleArray(length);
     jdouble* resultElements = env->GetDoubleArrayElements(result, nullptr);
 
+    #pragma omp parallel for
     for (int i = 0; i < length; i++) {
         resultElements[i] = elements[i] * multiplier;
     }
@@ -43,6 +45,7 @@ Java_cn_ac_oac_libs_andas_core_NativeMath_sumDoubleArray(
     jdouble* elements = env->GetDoubleArrayElements(array, nullptr);
 
     double sum = 0.0;
+    #pragma omp parallel for reduction(+:sum)
     for (int i = 0; i < length; i++) {
         sum += elements[i];
     }
@@ -64,10 +67,23 @@ Java_cn_ac_oac_libs_andas_core_NativeMath_meanDoubleArray(
 
     double sum = 0.0;
     int count = 0;
-    for (int i = 0; i < length; i++) {
-        if (!std::isnan(elements[i])) {
-            sum += elements[i];
-            count++;
+    #pragma omp parallel
+    {
+        double local_sum = 0.0;
+        int local_count = 0;
+        
+        #pragma omp for nowait
+        for (int i = 0; i < length; i++) {
+            if (!std::isnan(elements[i])) {
+                local_sum += elements[i];
+                local_count++;
+            }
+        }
+        
+        #pragma omp critical
+        {
+            sum += local_sum;
+            count += local_count;
         }
     }
 
@@ -86,20 +102,37 @@ Java_cn_ac_oac_libs_andas_core_NativeMath_maxDoubleArray(
 
     jdouble* elements = env->GetDoubleArrayElements(array, nullptr);
 
-    double max = std::numeric_limits<double>::lowest();
+    double max_val = std::numeric_limits<double>::lowest();
     bool foundValid = false;
-
-    for (int i = 0; i < length; i++) {
-        if (!std::isnan(elements[i])) {
-            if (!foundValid || elements[i] > max) {
-                max = elements[i];
-                foundValid = true;
+    
+    #pragma omp parallel
+    {
+        double local_max = std::numeric_limits<double>::lowest();
+        bool local_found = false;
+        
+        #pragma omp for nowait
+        for (int i = 0; i < length; i++) {
+            if (!std::isnan(elements[i])) {
+                if (!local_found || elements[i] > local_max) {
+                    local_max = elements[i];
+                    local_found = true;
+                }
+            }
+        }
+        
+        #pragma omp critical
+        {
+            if (local_found) {
+                if (!foundValid || local_max > max_val) {
+                    max_val = local_max;
+                    foundValid = true;
+                }
             }
         }
     }
 
     env->ReleaseDoubleArrayElements(array, elements, JNI_ABORT);
-    return foundValid ? max : std::numeric_limits<double>::quiet_NaN();
+    return foundValid ? max_val : std::numeric_limits<double>::quiet_NaN();
 }
 
 extern "C" JNIEXPORT jdouble JNICALL
@@ -113,20 +146,37 @@ Java_cn_ac_oac_libs_andas_core_NativeMath_minDoubleArray(
 
     jdouble* elements = env->GetDoubleArrayElements(array, nullptr);
 
-    double min = std::numeric_limits<double>::max();
+    double min_val = std::numeric_limits<double>::max();
     bool foundValid = false;
-
-    for (int i = 0; i < length; i++) {
-        if (!std::isnan(elements[i])) {
-            if (!foundValid || elements[i] < min) {
-                min = elements[i];
-                foundValid = true;
+    
+    #pragma omp parallel
+    {
+        double local_min = std::numeric_limits<double>::max();
+        bool local_found = false;
+        
+        #pragma omp for nowait
+        for (int i = 0; i < length; i++) {
+            if (!std::isnan(elements[i])) {
+                if (!local_found || elements[i] < local_min) {
+                    local_min = elements[i];
+                    local_found = true;
+                }
+            }
+        }
+        
+        #pragma omp critical
+        {
+            if (local_found) {
+                if (!foundValid || local_min < min_val) {
+                    min_val = local_min;
+                    foundValid = true;
+                }
             }
         }
     }
 
     env->ReleaseDoubleArrayElements(array, elements, JNI_ABORT);
-    return foundValid ? min : std::numeric_limits<double>::quiet_NaN();
+    return foundValid ? min_val : std::numeric_limits<double>::quiet_NaN();
 }
 
 extern "C" JNIEXPORT jdoubleArray JNICALL
@@ -148,6 +198,7 @@ Java_cn_ac_oac_libs_andas_core_NativeMath_vectorizedAdd(
     jdouble* resultElements = env->GetDoubleArrayElements(result, nullptr);
 
     // 向量化加法
+    #pragma omp parallel for
     for (int i = 0; i < length; i++) {
         resultElements[i] = elementsA[i] + elementsB[i];
     }
@@ -178,6 +229,7 @@ Java_cn_ac_oac_libs_andas_core_NativeMath_vectorizedMultiply(
     jdouble* resultElements = env->GetDoubleArrayElements(result, nullptr);
 
     // 向量化乘法
+    #pragma omp parallel for
     for (int i = 0; i < length; i++) {
         resultElements[i] = elementsA[i] * elementsB[i];
     }
@@ -205,6 +257,7 @@ Java_cn_ac_oac_libs_andas_core_NativeMath_dotProduct(
     jdouble* elementsB = env->GetDoubleArrayElements(b, nullptr);
 
     double dot = 0.0;
+    #pragma omp parallel for reduction(+:dot)
     for (int i = 0; i < length; i++) {
         dot += elementsA[i] * elementsB[i];
     }
@@ -225,6 +278,7 @@ Java_cn_ac_oac_libs_andas_core_NativeMath_norm(
     jdouble* elements = env->GetDoubleArrayElements(array, nullptr);
 
     double sumSq = 0.0;
+    #pragma omp parallel for reduction(+:sumSq)
     for (int i = 0; i < length; i++) {
         sumSq += elements[i] * elements[i];
     }
@@ -246,6 +300,7 @@ Java_cn_ac_oac_libs_andas_core_NativeMath_normalize(
     double sum = 0.0;
     double sumSq = 0.0;
 
+    #pragma omp parallel for reduction(+:sum,sumSq)
     for (int i = 0; i < length; i++) {
         sum += elements[i];
         sumSq += elements[i] * elements[i];
@@ -259,6 +314,7 @@ Java_cn_ac_oac_libs_andas_core_NativeMath_normalize(
     jdoubleArray result = env->NewDoubleArray(length);
     jdouble* resultElements = env->GetDoubleArrayElements(result, nullptr);
 
+    #pragma omp parallel for
     for (int i = 0; i < length; i++) {
         resultElements[i] = std > 0 ? (elements[i] - mean) / std : 0.0;
     }
@@ -284,6 +340,7 @@ Java_cn_ac_oac_libs_andas_core_NativeMath_variance(
     double sum = 0.0;
     double sumSq = 0.0;
 
+    #pragma omp parallel for reduction(+:sum,sumSq)
     for (int i = 0; i < length; i++) {
         sum += elements[i];
         sumSq += elements[i] * elements[i];
@@ -316,11 +373,12 @@ Java_cn_ac_oac_libs_andas_core_NativeMath_argsort(
     jdouble* elements = env->GetDoubleArrayElements(array, nullptr);
 
     std::vector<int> indices(length);
+    #pragma omp parallel for
     for (int i = 0; i < length; i++) {
         indices[i] = i;
     }
 
-    // 使用标准排序算法
+    // 使用标准排序算法，不使用并行排序以确保兼容性
     std::sort(indices.begin(), indices.end(),
               [&](int a, int b) { return elements[a] < elements[b]; });
 
@@ -346,6 +404,7 @@ Java_cn_ac_oac_libs_andas_core_NativeMath_greaterThan(
     jbooleanArray result = env->NewBooleanArray(length);
     jboolean* resultElements = env->GetBooleanArrayElements(result, nullptr);
 
+    #pragma omp parallel for
     for (int i = 0; i < length; i++) {
         resultElements[i] = elements[i] > threshold;
     }

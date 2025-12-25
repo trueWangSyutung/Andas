@@ -5,10 +5,11 @@
 #include <algorithm>
 #include <unordered_map>
 #include <string>
+#include <omp.h>
 
 #define LOG_TAG "AndasData"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
-
+#include "double_harsh.h"
 // 数据处理 优化实现
 
 extern "C" JNIEXPORT jintArray JNICALL
@@ -21,9 +22,24 @@ Java_cn_ac_oac_libs_andas_core_NativeData_findNullIndices(
     jdouble* elements = env->GetDoubleArrayElements(array, nullptr);
     
     std::vector<int> nullIndices;
-    for (int i = 0; i < length; i++) {
-        if (std::isnan(elements[i])) {
-            nullIndices.push_back(i);
+    
+    // 并行查找空值索引
+    #pragma omp parallel
+    {
+        std::vector<int> local_nullIndices;
+        
+        #pragma omp for nowait
+        for (int i = 0; i < length; i++) {
+            if (std::isnan(elements[i])) {
+                local_nullIndices.push_back(i);
+            }
+        }
+        
+        #pragma omp critical
+        {
+            nullIndices.insert(nullIndices.end(), 
+                               local_nullIndices.begin(), 
+                               local_nullIndices.end());
         }
     }
     
@@ -47,9 +63,23 @@ Java_cn_ac_oac_libs_andas_core_NativeData_dropNullValues(
     std::vector<double> nonNullValues;
     nonNullValues.reserve(length);
     
-    for (int i = 0; i < length; i++) {
-        if (!std::isnan(elements[i])) {
-            nonNullValues.push_back(elements[i]);
+    // 并行查找非空值
+    #pragma omp parallel
+    {
+        std::vector<double> local_nonNullValues;
+        
+        #pragma omp for nowait
+        for (int i = 0; i < length; i++) {
+            if (!std::isnan(elements[i])) {
+                local_nonNullValues.push_back(elements[i]);
+            }
+        }
+        
+        #pragma omp critical
+        {
+            nonNullValues.insert(nonNullValues.end(), 
+                                 local_nonNullValues.begin(), 
+                                 local_nonNullValues.end());
         }
     }
     
@@ -74,6 +104,7 @@ Java_cn_ac_oac_libs_andas_core_NativeData_fillNullWithConstant(
     jdoubleArray result = env->NewDoubleArray(length);
     jdouble* resultElements = env->GetDoubleArrayElements(result, nullptr);
     
+    #pragma omp parallel for
     for (int i = 0; i < length; i++) {
         resultElements[i] = std::isnan(elements[i]) ? value : elements[i];
     }
@@ -138,6 +169,7 @@ Java_cn_ac_oac_libs_andas_core_NativeData_sortIndices(
     jdouble* elements = env->GetDoubleArrayElements(array, nullptr);
     
     std::vector<int> indices(length);
+    #pragma omp parallel for
     for (int i = 0; i < length; i++) {
         indices[i] = i;
     }
@@ -158,40 +190,70 @@ Java_cn_ac_oac_libs_andas_core_NativeData_sortIndices(
     return result;
 }
 
-// 数据合并优化
 extern "C" JNIEXPORT jintArray JNICALL
 Java_cn_ac_oac_libs_andas_core_NativeData_mergeIndices(
-    JNIEnv* env,
-    jobject /* this */,
-    jdoubleArray left,
-    jdoubleArray right
+        JNIEnv* env,
+        jobject /* this */,
+        jdoubleArray left,
+        jdoubleArray right
 ) {
     jsize leftLength = env->GetArrayLength(left);
     jsize rightLength = env->GetArrayLength(right);
-    
+
     jdouble* leftElements = env->GetDoubleArrayElements(left, nullptr);
     jdouble* rightElements = env->GetDoubleArrayElements(right, nullptr);
-    
-    std::vector<int> mergedIndices;
-    
-    // 简单的内连接实现
-    for (int i = 0; i < leftLength; i++) {
-        for (int j = 0; j < rightLength; j++) {
-            if (leftElements[i] == rightElements[j]) {
-                mergedIndices.push_back(i);
-                mergedIndices.push_back(j);
-            }
+
+    // 使用自定义哈希和相等比较函数的哈希表
+    std::unordered_map<double, std::vector<int>, DoubleHash, DoubleEqual> rightValueMap;
+
+    // 构建右侧数组的值到索引列表的映射 - 并行化
+#pragma omp parallel for
+    for (int j = 0; j < rightLength; j++) {
+#pragma omp critical
+        {
+            rightValueMap[rightElements[j]].push_back(j);
         }
     }
-    
+
+    // 预分配结果向量大小，减少内存重新分配
+    std::vector<int> mergedIndices;
+
+    // 并行处理左侧数组
+    #pragma omp parallel
+    {
+        std::vector<int> localMergedIndices;
+        localMergedIndices.reserve(leftLength); // 预估大小
+
+        #pragma omp for nowait
+        for (int i = 0; i < leftLength; i++) {
+            auto it = rightValueMap.find(leftElements[i]);
+            if (it != rightValueMap.end()) {
+                for (int rightIdx : it->second) {
+                    localMergedIndices.push_back(i);
+                    localMergedIndices.push_back(rightIdx);
+                }
+            }
+        }
+
+        // 合并本地结果到全局向量
+#pragma omp critical
+        {
+            mergedIndices.insert(mergedIndices.end(),
+                                 localMergedIndices.begin(),
+                                 localMergedIndices.end());
+        }
+    }
+
     env->ReleaseDoubleArrayElements(left, leftElements, JNI_ABORT);
     env->ReleaseDoubleArrayElements(right, rightElements, JNI_ABORT);
-    
+
     jintArray result = env->NewIntArray(mergedIndices.size());
     env->SetIntArrayRegion(result, 0, mergedIndices.size(), mergedIndices.data());
-    
+
     return result;
 }
+
+
 
 // 布尔索引优化
 extern "C" JNIEXPORT jintArray JNICALL
@@ -206,9 +268,23 @@ Java_cn_ac_oac_libs_andas_core_NativeData_where(
     std::vector<int> indices;
     indices.reserve(length);
     
-    for (int i = 0; i < length; i++) {
-        if (maskElements[i]) {
-            indices.push_back(i);
+    // 并行查找true值的索引
+    #pragma omp parallel
+    {
+        std::vector<int> local_indices;
+        
+        #pragma omp for nowait
+        for (int i = 0; i < length; i++) {
+            if (maskElements[i]) {
+                local_indices.push_back(i);
+            }
+        }
+        
+        #pragma omp critical
+        {
+            indices.insert(indices.end(), 
+                             local_indices.begin(), 
+                             local_indices.end());
         }
     }
     
@@ -234,26 +310,44 @@ Java_cn_ac_oac_libs_andas_core_NativeData_describe(
         return env->NewDoubleArray(0);
     }
     
-    // 计算统计量
+    // 并行计算统计量
     double sum = 0.0;
-    double min = elements[0];
-    double max = elements[0];
+    double min_val = std::numeric_limits<double>::max();
+    double max_val = std::numeric_limits<double>::lowest();
     int count = 0;
     
-    for (int i = 0; i < length; i++) {
-        double val = elements[i];
-        if (!std::isnan(val)) {
-            sum += val;
-            count++;
-            if (val < min) min = val;
-            if (val > max) max = val;
+    #pragma omp parallel
+    {
+        double local_sum = 0.0;
+        double local_min = std::numeric_limits<double>::max();
+        double local_max = std::numeric_limits<double>::lowest();
+        int local_count = 0;
+        
+        #pragma omp for nowait
+        for (int i = 0; i < length; i++) {
+            double val = elements[i];
+            if (!std::isnan(val)) {
+                local_sum += val;
+                local_count++;
+                if (val < local_min) local_min = val;
+                if (val > local_max) local_max = val;
+            }
+        }
+        
+        #pragma omp critical
+        {
+            sum += local_sum;
+            count += local_count;
+            if (local_min < min_val) min_val = local_min;
+            if (local_max > max_val) max_val = local_max;
         }
     }
     
     double mean = count > 0 ? sum / count : 0.0;
     
-    // 计算方差
+    // 并行计算方差
     double variance = 0.0;
+    #pragma omp parallel for reduction(+:variance)
     for (int i = 0; i < length; i++) {
         double val = elements[i];
         if (!std::isnan(val)) {
@@ -267,7 +361,7 @@ Java_cn_ac_oac_libs_andas_core_NativeData_describe(
     
     // 返回: [count, mean, std, min, max]
     jdoubleArray result = env->NewDoubleArray(5);
-    jdouble resultElements[5] = {static_cast<double>(count), mean, std, min, max};
+    jdouble resultElements[5] = {static_cast<double>(count), mean, std, min_val, max_val};
     env->SetDoubleArrayRegion(result, 0, 5, resultElements);
     
     return result;
@@ -294,6 +388,7 @@ Java_cn_ac_oac_libs_andas_core_NativeData_sample(
     
     // 简单的随机采样（线性同余生成器）
     std::vector<int> indices(length);
+    #pragma omp parallel for
     for (int i = 0; i < length; i++) {
         indices[i] = i;
     }

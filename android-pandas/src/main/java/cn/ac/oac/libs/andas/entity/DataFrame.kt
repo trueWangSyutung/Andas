@@ -1,5 +1,6 @@
 package cn.ac.oac.libs.andas.entity
 
+import android.util.Log
 import cn.ac.oac.libs.andas.types.AndaTypes
 import cn.ac.oac.libs.andas.core.NativeMath
 import cn.ac.oac.libs.andas.core.NativeData
@@ -1209,12 +1210,14 @@ class DataFrame {
             .map { (it as Number).toDouble() }
             .toDoubleArray()
         
-        val indices = NativeMath.greaterThan(doubleArray, threshold)
-        
+        val mask = NativeMath.greaterThan(doubleArray, threshold)
+        val indices = NativeData.where(mask)
         val filteredRows = indices.map { i ->
-            columns.associate { colName -> colName to data[colName]!![i] }
+            columns.associate { colName2->
+                colName2 to data[colName2]!!.getIndex(i)
+            }
         }
-        
+
         return DataFrame(filteredRows)
     }
     
@@ -1292,7 +1295,7 @@ class DataFrame {
         // 创建新的DataFrame，只包含非空行
         val newRows = nonNullIndices.map { i ->
             columns.associate { colName -> 
-                colName to data[colName]!![i] 
+                colName to data[colName]!![i]
             }
         }
         
@@ -1501,12 +1504,12 @@ class DataFrame {
             val row = mutableMapOf<String, Any?>()
             // 添加左DataFrame的所有列
             columns.forEach { colName ->
-                row[colName] = this.at(leftIndex, colName)
+                row[colName] = this.data[colName]!![leftIndex]
             }
             // 添加右DataFrame的所有列（排除连接列）
             other.columns().forEach { colName ->
                 if (colName != on) {
-                    row[colName] = other.at(rightIndex, colName)
+                    row[colName] = other.data[colName]!![rightIndex]
                 }
             }
             resultRows.add(row)

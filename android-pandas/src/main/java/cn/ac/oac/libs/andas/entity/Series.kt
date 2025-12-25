@@ -1,5 +1,6 @@
 package cn.ac.oac.libs.andas.entity
 
+import android.util.Log
 import cn.ac.oac.libs.andas.types.AndaTypes
 import cn.ac.oac.libs.andas.types.typeName
 import cn.ac.oac.libs.andas.core.NativeMath
@@ -18,6 +19,8 @@ class Series<T> {
     private var index: List<Any>
     private var name: String?
     private var dtype: AndaTypes?
+    // 添加索引到位置的映射，用于快速查找
+    private var indexToPosition: Map<Any, Int>? = null
 
     /**
      * 构造函数 - 通过列表数据创建Series
@@ -42,6 +45,8 @@ class Series<T> {
         if (this.index.size != this.data.size) {
             throw IllegalArgumentException("Index和Data的长度必须一致")
         }
+
+        this.indexToPosition = buildIndexToPositionMap()
     }
 
     /**
@@ -58,8 +63,18 @@ class Series<T> {
         this.index = map.keys.toList()
         this.name = name
         this.dtype = if (!this.data.isEmpty() && this.data.first() != null) guessDtype(this.data.first()) else null
+        this.indexToPosition = buildIndexToPositionMap()
     }
-
+    /**
+     * 构建索引到位置的映射表
+     */
+    private fun buildIndexToPositionMap(): Map<Any, Int> {
+        val map = mutableMapOf<Any, Int>()
+        for ((position, label) in index.withIndex()) {
+            map[label] = position
+        }
+        return map
+    }
     /**
      * 获取Series的索引
      */
@@ -90,18 +105,6 @@ class Series<T> {
      */
     fun shape(): Int = data.size
 
-    /**
-     * 通过索引位置获取元素
-     *
-     * @param position 索引位置
-     * @return 对应位置的元素
-     */
-    operator fun get(position: Int): T? {
-        if (position < 0 || position >= data.size) {
-            throw IndexOutOfBoundsException("索引超出范围: $position")
-        }
-        return data[position]
-    }
 
 
 
@@ -267,12 +270,10 @@ class Series<T> {
         name: String? = null,
         dtype: AndaTypes? = null
     ): Series<T> {
-        return Series(
-            data ?: this.data,
-            index ?: this.index,
-            name ?: this.name,
-            dtype ?: this.dtype
-        )
+        val newData = data ?: this.data
+        val newIndex = index ?: this.index
+        val newSeries = Series(newData, newIndex, name ?: this.name, dtype ?: this.dtype)
+        return newSeries
     }
 
 
@@ -283,12 +284,25 @@ class Series<T> {
      * @return 对应标签的元素
      */
     operator fun get(label: Any): T? {
-        val position = index.indexOf(label)
-        if (position == -1) {
+        val position = indexToPosition?.get(label)
+        if (position == null) {
             throw NoSuchElementException("未找到索引: $label")
         }
         return data[position]
     }
+    /**
+     * 通过索引位置获取元素
+     *
+     * @param position 索引位置
+     * @return 对应位置的元素
+     */
+     fun getIndex(position: Int): T? {
+        if (position < 0 || position >= data.size) {
+            throw IndexOutOfBoundsException("索引超出范围: $position")
+        }
+        return data[position]
+    }
+
 
     /**
      * 获取前n个元素

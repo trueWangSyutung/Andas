@@ -56,7 +56,7 @@ object JniExamples {
                 try {
                     val data = (1..1000).map { it * 1.0 }.toDoubleArray()
                     val variance = NativeMath.variance(data)
-                    val std = NativeMath.sumDoubleArray(data)
+                    val std = NativeMath.std(data)  // 修复：使用正确的std函数
                     val max = NativeMath.maxDoubleArray(data)
                     val min = NativeMath.minDoubleArray(data)
                     callback("✅ 原生统计计算\n方差: $variance\n标准差: $std\n最大值: $max\n最小值: $min")

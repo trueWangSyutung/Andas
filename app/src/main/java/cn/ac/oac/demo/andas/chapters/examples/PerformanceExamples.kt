@@ -1,6 +1,7 @@
 package cn.ac.oac.demo.andas.chapters.examples
 
 import android.content.Context
+import android.util.Log
 import cn.ac.oac.libs.andas.Andas
 import cn.ac.oac.libs.andas.core.NativeMath
 import cn.ac.oac.demo.andas.chapters.Example
@@ -832,26 +833,32 @@ object PerformanceExamples {
                     // 创建大数据集
                     val df = andasDataFrame(
                         mapOf(
-                            "id" to (1..500000).toList(),
-                            "value" to (1..500000).map { it * 1.0 },
-                            "category" to (1..500000).map { it % 10 }
+                            "id" to (1..50000).toList(),
+                            "value" to (1..50000).map { it * 1.0 },
+                            "category" to (1..50000).map { it % 10 }
                         )
                     )
                     
                     // 链式操作
                     val start = System.currentTimeMillis()
-                    val result = df
-                        .filterGreaterThan("value", 250000.0)
+                    var result = df
+                        .filterGreaterThan("value", 25000.0)
+
+                    callback("${result.columns()}")
+                    Log.i("TAG", "comprehensiveTest: ${result.columns()}")
+                    result = result
                         .addColumn("doubled") { row ->
                             val value = row["value"] as Double
-                            value?.times(2) ?: 0.0
+                            value.times(2)
                         }
                         .groupBySum("category", "doubled")
+                    callback("$result")
                     val time = System.currentTimeMillis() - start
                     
-                    callback("✅ 综合性能测试\n数据量: 50万\n操作: 筛选 + 新增列 + 分组求和\n耗时: ${time}ms\n结果: ${result.shape()}")
+                    callback("✅ 综合性能测试\n数据量: 50000\n操作: 筛选 + 新增列 + 分组求和\n耗时: ${time}ms\n结果: ${result.shape()}")
                 } catch (e: Exception) {
-                    callback("❌ 综合测试失败: ${e.message}")
+                    e.printStackTrace()
+                    callback("❌ 综合测试失败: ${e.printStackTrace()}")
                 }
             }
         )

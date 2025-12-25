@@ -10,6 +10,7 @@ import androidx.compose.ui.platform.LocalContext
 import cn.ac.oac.demo.andas.chapters.ChapterManager
 import cn.ac.oac.demo.andas.ui.ChapterDetailScreen
 import cn.ac.oac.demo.andas.ui.ChapterSelectionScreen
+import cn.ac.oac.demo.andas.ui.PaperExperimentScreen
 import cn.ac.oac.demo.andas.ui.theme.AndasTheme
 import cn.ac.oac.libs.andas.Andas
 
@@ -69,6 +70,9 @@ fun DemoApp() {
                 onChapterClick = { chapterId ->
                     currentChapterId = chapterId
                     currentScreen = Screen.ChapterDetail
+                },
+                onPaperExperimentClick = {
+                    currentScreen = Screen.PaperExperiment
                 }
             )
         }
@@ -91,6 +95,15 @@ fun DemoApp() {
                 }
             }
         }
+        
+        is Screen.PaperExperiment -> {
+            PaperExperimentScreen(
+                onBack = {
+                    currentScreen = Screen.ChapterList
+                },
+                context = context
+            )
+        }
     }
 }
 
@@ -100,4 +113,5 @@ fun DemoApp() {
 sealed class Screen {
     object ChapterList : Screen()
     object ChapterDetail : Screen()
+    object PaperExperiment : Screen()
 }
