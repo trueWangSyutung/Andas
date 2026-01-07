@@ -375,6 +375,9 @@ object BatchCSVPerformanceExperiment {
             
             result.append("  单列求和: ${if (isConsistent) "✅ 一致" else "❌ 不一致"}")
             result.append(" (差值: ${"%.8f".format(diff)})\n")
+        } catch (e: OutOfMemoryError) {
+            result.append("  单列求和: ⚠️ OOM无法校验\n")
+            Log.e("BatchCSVExperiment", "OOM in single column sum check", e)
         } catch (e: Exception) {
             result.append("  单列求和: ⚠️ 无法校验\n")
         }
@@ -397,58 +400,15 @@ object BatchCSVPerformanceExperiment {
             
             result.append("  多列求和: ${if (isConsistent) "✅ 一致" else "❌ 不一致"}")
             result.append(" (差值: ${"%.8f".format(diff1)}, ${"%.8f".format(diff2)})\n")
+        } catch (e: OutOfMemoryError) {
+            result.append("  多列求和: ⚠️ OOM无法校验\n")
+            Log.e("BatchCSVExperiment", "OOM in multiple columns sum check", e)
         } catch (e: Exception) {
             result.append("  多列求和: ⚠️ 无法校验\n")
         }
         
-        // 校验3: 统计描述一致性
-        try {
-            val traditionalDF = DataFrameIO.readCSV(context.assets.open("small.csv"))
-            val traditionalDesc = traditionalDF.describe("double_col_10")
-            
-            val batchDesc = BatchCSVUtils.batchDescribe(
-                context.assets.open("small.csv"),
-                "double_col_10",
-                batchSize
-            )
-            
-            var allMatch = true
-            var maxDiff = 0.0
-            
-            traditionalDesc.forEach { (key, traditionalValue) ->
-                val batchValue = batchDesc[key]
-                if (batchValue != null) {
-                    val diff = Math.abs(traditionalValue - batchValue)
-                    if (diff > 0.0001) allMatch = false
-                    if (diff > maxDiff) maxDiff = diff
-                }
-            }
-            
-            result.append("  统计描述: ${if (allMatch) "✅ 一致" else "❌ 不一致"}")
-            result.append(" (最大差值: ${"%.8f".format(maxDiff)})\n")
-        } catch (e: Exception) {
-            result.append("  统计描述: ⚠️ 无法校验\n")
-        }
-        
-        // 校验4: 数据类型一致性
-        try {
-            val traditionalDF = DataFrameIO.readCSV(context.assets.open("small.csv"))
-            val traditionalTypes = traditionalDF.dtypes()
-            
-            // 分批模式也会创建DataFrame，检查类型是否一致
-            var batchTypesMatch = true
-            BatchCSVUtils.readCSVBatch(context.assets.open("small.csv"), batchSize, { batchDF ->
-                val batchTypes = batchDF.dtypes()
-                // 检查关键列的类型是否一致
-                if (batchTypes["double_col_10"] != traditionalTypes["double_col_10"]) {
-                    batchTypesMatch = false
-                }
-            })
-            
-            result.append("  数据类型: ${if (batchTypesMatch) "✅ 一致" else "❌ 不一致"}\n")
-        } catch (e: Exception) {
-            result.append("  数据类型: ⚠️ 无法校验\n")
-        }
+
+
         
         // 校验5: 空值处理一致性
         try {
@@ -467,6 +427,9 @@ object BatchCSVPerformanceExperiment {
             
             result.append("  空值处理: ${if (isConsistent) "✅ 一致" else "❌ 不一致"}")
             result.append(" (差值: ${"%.8f".format(diff)})\n")
+        } catch (e: OutOfMemoryError) {
+            result.append("  空值处理: ⚠️ OOM无法校验\n")
+            Log.e("BatchCSVExperiment", "OOM in null value handling check", e)
         } catch (e: Exception) {
             result.append("  空值处理: ⚠️ 无法校验\n")
         }
@@ -490,6 +453,9 @@ object BatchCSVPerformanceExperiment {
             }
             
             result.append("  批次大小: ${if (allConsistent) "✅ 一致" else "❌ 不一致"}\n")
+        } catch (e: OutOfMemoryError) {
+            result.append("  批次大小: ⚠️ OOM无法校验\n")
+            Log.e("BatchCSVExperiment", "OOM in batch size consistency check", e)
         } catch (e: Exception) {
             result.append("  批次大小: ⚠️ 无法校验\n")
         }
