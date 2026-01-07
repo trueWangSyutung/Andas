@@ -17,7 +17,7 @@ object NativeMath {
     external fun maxDoubleArray(array: DoubleArray): Double
     external fun minDoubleArray(array: DoubleArray): Double
     
-    // 向量化运算
+    // 向量化运算sumDoubleArray
     external fun vectorizedAdd(a: DoubleArray, b: DoubleArray): DoubleArray
     external fun vectorizedMultiply(a: DoubleArray, b: DoubleArray): DoubleArray
     external fun dotProduct(a: DoubleArray, b: DoubleArray): Double

@@ -17,6 +17,7 @@ object ChapterManager {
     const val CHAPTER_ASYNC = "async"
     const val CHAPTER_JNI = "jni"
     const val CHAPTER_PERFORMANCE = "performance"
+    const val CHAPTER_BATCH_CSV = "batch_csv"
     
     /**
      * 获取所有章节信息
@@ -58,6 +59,12 @@ object ChapterManager {
                 title = "第六章：性能测试",
                 description = "性能基准测试和对比",
                 icon = "📈"
+            ),
+            ChapterInfo(
+                id = CHAPTER_BATCH_CSV,
+                title = "第七章：CSV分批处理",
+                description = "大型CSV文件的分批处理工具",
+                icon = "🗂️"
             )
         )
     }
@@ -73,6 +80,7 @@ object ChapterManager {
             CHAPTER_ASYNC -> getAsyncExamples()
             CHAPTER_JNI -> getJniExamples()
             CHAPTER_PERFORMANCE -> getPerformanceExamples()
+            CHAPTER_BATCH_CSV -> getBatchCSVExamples()
             else -> emptyList()
         }
     }
@@ -116,7 +124,17 @@ object ChapterManager {
      * 第六章：性能测试示例
      */
     private fun getPerformanceExamples(): List<Example> {
-        return PerformanceExamples.getExamples()
+        return PerformanceBenchmarkExamples.getExamples()
+    }
+    
+    /**
+     * 第七章：CSV分批处理示例
+     */
+    private fun getBatchCSVExamples(): List<Example> {
+        // 合并原有的示例和新的性能实验
+        val originalExamples = BatchCSVExamples.getExamples()
+        val experimentExamples = BatchCSVPerformanceExperiment.getExperiments()
+        return originalExamples + experimentExamples
     }
 }
 

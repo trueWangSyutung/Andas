@@ -23,7 +23,9 @@ enum class AndaTypes(val dtype: String) {
     // 字符串类型
     STRING("STRING"),
     // 布尔类型
-    BOOL("BOOL");
+    BOOL("BOOL"),
+
+    OBJECTS("OBJECT");
 
 
 
@@ -35,13 +37,13 @@ enum class AndaTypes(val dtype: String) {
             return when (clazz) {
                 Byte::class.java, java.lang.Byte::class.java -> INT8
                 Short::class.java, java.lang.Short::class.java -> INT16
-                Integer::class.java, java.lang.Integer::class.java -> INT32
+                Integer::class.java, Integer::class.java -> INT32
                 Long::class.java, java.lang.Long::class.java -> INT64
                 Float::class.java, java.lang.Float::class.java -> FLOAT32
                 Double::class.java, java.lang.Double::class.java -> FLOAT64
                 Boolean::class.java, java.lang.Boolean::class.java -> BOOL
                 String::class.java, java.lang.String::class.java -> STRING
-                else -> throw IllegalArgumentException("Unsupported type: $clazz")
+                else -> OBJECTS
             }
         }
     }
@@ -60,6 +62,7 @@ fun AndaTypes.toJavaType(): Class<*> {
         AndaTypes.FLOAT64 -> Double::class.java
         AndaTypes.BOOL -> Boolean::class.java
         AndaTypes.STRING ->  String::class.java
+        AndaTypes.OBJECTS -> Any::class.java
     }
 }
 

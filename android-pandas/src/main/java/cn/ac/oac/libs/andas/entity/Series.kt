@@ -16,7 +16,7 @@ import java.util.*
  */
 class Series<T> {
     private var data: List<T?>
-    private var index: List<Any>
+    private var index: List<Any> // 只能是 Int 或 String
     private var name: String?
     private var dtype: AndaTypes?
     // 添加索引到位置的映射，用于快速查找
@@ -26,7 +26,7 @@ class Series<T> {
      * 构造函数 - 通过列表数据创建Series
      *
      * @param data 数据列表
-     * @param index 索引列表，默认为从0开始的整数序列
+     * @param index 索引列表，默认为从0开始的整数序列，只能是Int或String
      * @param name Series名称
      * @param dtype 数据类型
      */
@@ -37,7 +37,12 @@ class Series<T> {
         dtype: AndaTypes? = null
     ) {
         this.data = data.toList()
-        this.index = index ?: (0 until data.size).toList()
+        val rawIndex = index ?: (0 until data.size).toList()
+        
+        // 验证索引类型：只能是Int或String
+        validateIndexType(rawIndex)
+        
+        this.index = rawIndex
         this.name = name
         this.dtype = dtype ?: if (data.isNotEmpty()) guessDtype(data.first()) else null
         
@@ -52,7 +57,7 @@ class Series<T> {
     /**
      * 构造函数 - 通过Map创建Series
      *
-     * @param map 键值对映射，键作为索引，值作为数据
+     * @param map 键值对映射，键作为索引，值作为数据，索引只能是Int或String
      * @param name Series名称
      */
     constructor(
@@ -60,11 +65,29 @@ class Series<T> {
         name: String? = null
     ) {
         this.data = map.values.toList()
-        this.index = map.keys.toList()
+        val rawIndex = map.keys.toList()
+        
+        // 验证索引类型：只能是Int或String
+        validateIndexType(rawIndex)
+        
+        this.index = rawIndex
         this.name = name
         this.dtype = if (!this.data.isEmpty() && this.data.first() != null) guessDtype(this.data.first()) else null
         this.indexToPosition = buildIndexToPositionMap()
     }
+    
+    /**
+     * 验证索引类型：只能是Int或String
+     */
+    private fun validateIndexType(indexList: List<Any>) {
+        for (item in indexList) {
+            when (item) {
+                is Int, is String -> return
+                else -> throw IllegalArgumentException("索引类型必须是Int或String，但得到了: ${item::class.simpleName}")
+            }
+        }
+    }
+    
     /**
      * 构建索引到位置的映射表
      */
@@ -283,22 +306,24 @@ class Series<T> {
      * @param label 标签索引
      * @return 对应标签的元素
      */
-    operator fun get(label: Any): T? {
+    operator fun get(label: String): T? {
+        // label: Any 只能是 Int 和 String
         val position = indexToPosition?.get(label)
         if (position == null) {
             throw NoSuchElementException("未找到索引: $label")
         }
         return data[position]
     }
+
     /**
      * 通过索引位置获取元素
      *
      * @param position 索引位置
      * @return 对应位置的元素
      */
-     fun getIndex(position: Int): T? {
+    operator fun get(position: Int): T? {
         if (position < 0 || position >= data.size) {
-            throw IndexOutOfBoundsException("索引超出范围: $position")
+            return null;
         }
         return data[position]
     }

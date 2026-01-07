@@ -14,12 +14,13 @@ import kotlin.collections.sorted
 /**
  * DataFrame 类似于二维表格，是Andas库的核心数据结构
  * 提供类似pandas.DataFrame的数据操作接口
+ * 
+ * index 通过 data 中的 Series 获取，不单独存储
  */
 class DataFrame {
     private val data: MutableMap<String, Series<Any>> = mutableMapOf()
     private var columns: List<String> = listOf()
-    private var index: List<Any> = listOf()
-    
+
     /**
      * 通过列数据构造DataFrame
      */
@@ -28,19 +29,25 @@ class DataFrame {
             return
         }
         
-        // 验证所有列长度一致
-        val firstSize = columnsData.values.first().size
-        columnsData.values.forEach { 
-            if (it.size != firstSize) {
-                throw IllegalArgumentException("所有列的长度必须一致")
-            }
-        }
-        
         this.columns = columnsData.keys.toList()
-        this.index = (0 until firstSize).toList()
+        
+        // 找到最长列的长度作为索引长度
+        val maxSize = columnsData.values.maxOfOrNull { it.size } ?: 0
+        
+        // 创建默认索引 (0 until maxSize)
+        val defaultIndex = (0 until maxSize).toList()
+        
+        // 验证索引类型
+        validateIndexType(defaultIndex)
         
         columnsData.forEach { (colName, colData) ->
-            data[colName] = Series(colData, index, colName)
+            // 如果列长度不足，用null填充
+            val paddedData = if (colData.size < maxSize) {
+                colData + List(maxSize - colData.size) { null }
+            } else {
+                colData
+            }
+            data[colName] = Series(paddedData, defaultIndex, colName)
         }
     }
     
@@ -59,12 +66,17 @@ class DataFrame {
         }
         
         this.columns = allColumns.toList()
-        this.index = rowsData.indices.map { it }
+        
+        // 创建默认索引
+        val defaultIndex = rowsData.indices.map { it }
+        
+        // 验证索引类型
+        validateIndexType(defaultIndex)
         
         // 转换为列数据
         columns.forEach { colName ->
             val colData = rowsData.map { row -> row[colName] }
-            data[colName] = Series(colData, index, colName)
+            data[colName] = Series(colData, defaultIndex, colName)
         }
     }
     
@@ -73,28 +85,50 @@ class DataFrame {
      */
     private constructor(
         data: Map<String, Series<Any>>,
-        columns: List<String>,
-        index: List<Any>
+        columns: List<String>
     ) {
         this.data.putAll(data)
         this.columns = columns
-        this.index = index
+        
+        // 验证所有Series的索引类型一致且有效
+        if (data.isNotEmpty()) {
+            val firstSeries = data.values.first()
+            val indexList = firstSeries.index()
+            validateIndexType(indexList)
+        }
+    }
+    
+    /**
+     * 验证索引类型：只能是Int或String
+     */
+    private fun validateIndexType(indexList: List<Any>) {
+        for (item in indexList) {
+            when (item) {
+                is Int, is String -> continue
+                else -> throw IllegalArgumentException("索引类型必须是Int或String，但得到了: ${item::class.simpleName}")
+            }
+        }
+    }
+
+    /**
+     * 获取索引列表 - 从第一个Series获取
+     */
+    fun index(): List<Any> {
+        if (data.isEmpty()) {
+            return emptyList()
+        }
+        return data.values.first().index()
     }
 
     /**
      * 获取形状 (行数, 列数)
      */
-    fun shape(): Pair<Int, Int> = index.size to columns.size
+    fun shape(): Pair<Int, Int> = index().size to columns.size
     
     /**
      * 获取列名列表
      */
     fun columns(): List<String> = columns.toList()
-    
-    /**
-     * 获取索引列表
-     */
-    fun index(): List<Any> = index.toList()
     
     /**
      * 获取数据类型信息
@@ -239,24 +273,26 @@ class DataFrame {
      * 获取前n行
      */
     fun head(n: Int = 5): DataFrame {
-        val actualN = kotlin.math.min(n, index.size)
-        val newIndex = index.take(actualN)
+        val indexList = index()
+        val actualN = kotlin.math.min(n, indexList.size)
+        val newIndex = indexList.take(actualN)
         val newData = columns.associate { colName ->
             colName to data[colName]!!.head(actualN)
         }
-        return DataFrame(newData, columns, newIndex)
+        return DataFrame(newData, columns)
     }
     
     /**
      * 获取后n行
      */
     fun tail(n: Int = 5): DataFrame {
-        val actualN = kotlin.math.min(n, index.size)
-        val newIndex = index.takeLast(actualN)
+        val indexList = index()
+        val actualN = kotlin.math.min(n, indexList.size)
+        val newIndex = indexList.takeLast(actualN)
         val newData = columns.associate { colName ->
             colName to data[colName]!!.tail(actualN)
         }
-        return DataFrame(newData, columns, newIndex)
+        return DataFrame(newData, columns)
     }
     
     /**
@@ -271,7 +307,7 @@ class DataFrame {
         val newData = colNames.associate { colName ->
             colName to data[colName]!!
         }
-        return DataFrame(newData, colNames.toList(), index)
+        return DataFrame(newData, colNames.toList())
     }
     
     /**
@@ -296,7 +332,7 @@ class DataFrame {
         val newData = keys.associate { colName ->
             colName to data[colName]!!
         }
-        return DataFrame(newData, keys, index)
+        return DataFrame(newData, keys)
     }
 
     /**
@@ -310,8 +346,9 @@ class DataFrame {
      * 设置列数据
      */
     operator fun set(key: String, value: Series<Any>) {
-        if (value.size() != index.size) {
-            throw IllegalArgumentException("新列长度必须与现有行数一致，当前: ${value.size()}, 需要: ${index.size}")
+        val indexList = index()
+        if (value.size() != indexList.size) {
+            throw IllegalArgumentException("新列长度必须与现有行数一致，当前: ${value.size()}, 需要: ${indexList.size}")
         }
         data[key] = value
         if (key !in columns) {
@@ -323,7 +360,8 @@ class DataFrame {
      * 设置行数据
      */
     operator fun set(key: Int, value: Map<String, Any?>) {
-        if (key < 0 || key >= index.size) {
+        val indexList = index()
+        if (key < 0 || key >= indexList.size) {
             throw IndexOutOfBoundsException("行索引超出范围: $key")
         }
         
@@ -335,11 +373,11 @@ class DataFrame {
                 // 更新指定位置的值
                 currentValues[key] = cellValue
                 // 创建新的 Series
-                data[colName] = Series(currentValues, index, colName)
+                data[colName] = Series(currentValues, indexList, colName)
             } else {
                 // 如果列不存在，创建新列（用 null 填充之前的行）
-                val newValues = List(index.size) { i -> if (i == key) cellValue else null }
-                data[colName] = Series(newValues, index, colName)
+                val newValues = List(indexList.size) { i -> if (i == key) cellValue else null }
+                data[colName] = Series(newValues, indexList, colName)
                 columns = columns + colName
             }
         }
@@ -349,27 +387,40 @@ class DataFrame {
      * 按条件筛选行
      */
     fun filter(predicate: (Map<String, Series<Any>?>) -> Boolean): DataFrame {
+        val indexList = index()
         val filteredData = mutableListOf<Map<String, Any?>>()
         val filteredIndex = mutableListOf<Any>()
         
-        for (i in index.indices) {
+        for (i in indexList.indices) {
             val row = getRow(i)
             if (predicate(row)) {
                 // 将 Series<Any> 转换回 Map<String, Any?> 用于创建新 DataFrame
                 val rowValues = row.mapValues { (_, series) -> series?.get(0) }
                 filteredData.add(rowValues)
-                filteredIndex.add(index[i])
+                filteredIndex.add(indexList[i])
             }
         }
         
-        return DataFrame(filteredData)
+        // 创建新的DataFrame，需要重新创建Series以使用新的索引
+        if (filteredData.isEmpty()) {
+            return DataFrame(emptyList<Map<String, Any?>>())
+        }
+        
+        val newData = mutableMapOf<String, Series<Any>>()
+        columns.forEach { colName ->
+            val colData = filteredData.map { row -> row[colName] }
+            newData[colName] = Series(colData, filteredIndex, colName)
+        }
+        
+        return DataFrame(newData, columns)
     }
     
     /**
      * 获取指定行 - 返回 Map<String, Series<Any>?>
      */
     fun getRow(rowIndex: Int): Map<String, Series<Any>?> {
-        if (rowIndex < 0 || rowIndex >= index.size) {
+        val indexList = index()
+        if (rowIndex < 0 || rowIndex >= indexList.size) {
             throw IndexOutOfBoundsException("行索引超出范围: $rowIndex")
         }
         
@@ -389,7 +440,8 @@ class DataFrame {
      * 按标签获取行 - 返回 Map<String, Series<Any>?>
      */
     fun loc(label: Any): Map<String, Series<Any>?> {
-        val position = index.indexOf(label)
+        val indexList = index()
+        val position = indexList.indexOf(label)
         if (position == -1) {
             throw NoSuchElementException("未找到索引: $label")
         }
@@ -412,7 +464,8 @@ class DataFrame {
      * 按标签获取单元格值
      */
     fun at(label: Any, colName: String): Any? {
-        val position = index.indexOf(label)
+        val indexList = index()
+        val position = indexList.indexOf(label)
         if (position == -1) {
             throw NoSuchElementException("未找到索引: $label")
         }
@@ -424,17 +477,18 @@ class DataFrame {
      */
     fun isnull(): DataFrame {
         val newData = mutableMapOf<String, Series<Any>>()
+        val indexList = index()
         for (colName in columns) {
             val boolSeries = data[colName]!!.isnull()
             // 转换为Series<Any>以兼容DataFrame
             val anySeries = Series(
                 boolSeries.values().map { it as Any? },
-                boolSeries.index(),
+                indexList,
                 boolSeries.name()
             )
             newData[colName] = anySeries
         }
-        return DataFrame(newData, columns, index)
+        return DataFrame(newData, columns)
     }
     
     /**
@@ -442,26 +496,28 @@ class DataFrame {
      */
     fun notnull(): DataFrame {
         val newData = mutableMapOf<String, Series<Any>>()
+        val indexList = index()
         for (colName in columns) {
             val boolSeries = data[colName]!!.notnull()
             // 转换为Series<Any>以兼容DataFrame
             val anySeries = Series(
                 boolSeries.values().map { it as Any? },
-                boolSeries.index(),
+                indexList,
                 boolSeries.name()
             )
             newData[colName] = anySeries
         }
-        return DataFrame(newData, columns, index)
+        return DataFrame(newData, columns)
     }
     
     /**
      * 丢弃包含空值的行
      */
     fun dropna(): DataFrame {
+        val indexList = index()
         val rowsToKeep = mutableListOf<Int>()
         
-        for (i in index.indices) {
+        for (i in indexList.indices) {
             var hasNull = false
             for (colName in columns) {
                 if (data[colName]!![i] == null) {
@@ -488,7 +544,7 @@ class DataFrame {
         val newData = columns.associate { colName ->
             colName to data[colName]!!.fillna(value)
         }
-        return DataFrame(newData, columns, index)
+        return DataFrame(newData, columns)
     }
     
     /**
@@ -580,40 +636,46 @@ class DataFrame {
             newName to data[colName]!!.copy(name = newName)
         }
         
-        return DataFrame(newData, newColumns, index)
+        return DataFrame(newData, newColumns)
     }
     
     /**
      * 添加列
      */
     fun addColumn(name: String, data: List<Any?>): DataFrame {
-        if (data.size != index.size) {
+        val indexList = index()
+        if (data.size != indexList.size) {
             throw IllegalArgumentException("新列长度必须与现有行数一致")
         }
         
         val newData = this.data.toMutableMap()
-        newData[name] = Series(data, index, name)
+        newData[name] = Series(data, indexList, name)
         
         val newColumns = if (name in columns) columns else columns + name
         
-        return DataFrame(newData, newColumns, index)
+        return DataFrame(newData, newColumns)
     }
 
     /**
      * 添加列（通过转换函数）
      */
     fun addColumn(name: String, transform: (Map<String, Any?>) -> Any?): DataFrame {
+        val indexList = index()
         val newData = this.data.toMutableMap()
-        val newColumnData = this.index.map { rowIndex ->
-            val row = this.columns.associate { colName ->
-                colName to this.data[colName]?.get(rowIndex)
+        val newColumnData = indexList.map { rowIndex ->
+            val row = this.columns.associate { colName: String ->
+                colName to when (rowIndex) {
+                    is Int -> this.data[colName]?.get(rowIndex)
+                    is String -> this.data[colName]?.get(rowIndex)
+                    else -> this.data[colName]?.get(rowIndex.toString())
+                }
             }
             transform(row)
         }
-        newData[name] = Series(newColumnData, this.index, name)
+        newData[name] = Series(newColumnData, indexList, name)
 
         val newColumns = if (name in columns) columns else columns + name
-        return DataFrame(newData, newColumns, index)
+        return DataFrame(newData, newColumns)
     }
 
     /**
@@ -628,7 +690,7 @@ class DataFrame {
         val newColumns = columns.filter { it !in colNames }
         val newData = data.filterKeys { it !in colNames }
         
-        return DataFrame(newData, newColumns, index)
+        return DataFrame(newData, newColumns)
     }
     
     /**
@@ -636,13 +698,11 @@ class DataFrame {
      */
     fun copy(
         data: Map<String, Series<Any>>? = null,
-        columns: List<String>? = null,
-        index: List<Any>? = null
+        columns: List<String>? = null
     ): DataFrame {
         return DataFrame(
             data ?: this.data,
-            columns ?: this.columns,
-            index ?: this.index
+            columns ?: this.columns
         )
     }
     
@@ -655,7 +715,8 @@ class DataFrame {
         }
         
         val builder = StringBuilder()
-        val maxRows = kotlin.math.min(10, index.size)
+        val indexList = index()
+        val maxRows = kotlin.math.min(10, indexList.size)
         
         // 表头
         builder.append(columns.joinToString("\t"))
@@ -670,7 +731,7 @@ class DataFrame {
             builder.append("\n")
         }
         
-        if (index.size > maxRows) {
+        if (indexList.size > maxRows) {
             builder.append("...\n")
         }
         
@@ -707,9 +768,8 @@ class DataFrame {
         val doubleArray = series.values()
             .filterNotNull()
             .map { (it as Number).toDouble() }
-            .toDoubleArray()
-        
-        return NativeMath.sumDoubleArray(doubleArray)
+
+        return doubleArray.sum()
     }
     
     /**
@@ -723,8 +783,7 @@ class DataFrame {
         val doubleArray = series.values()
             .filterNotNull()
             .map { (it as Number).toDouble() }
-            .toDoubleArray()
-        
+
         if (doubleArray.isEmpty()) return Double.NaN
         
         return doubleArray.sum() / doubleArray.size
@@ -738,9 +797,8 @@ class DataFrame {
         val doubleArray = series.values()
             .filterNotNull()
             .map { (it as Number).toDouble() }
-            .toDoubleArray()
-        
-        return NativeMath.meanDoubleArray(doubleArray)
+
+        return doubleArray.sum() / doubleArray.size
     }
     
     /**
@@ -755,7 +813,7 @@ class DataFrame {
             .filterNotNull()
             .map { (it as Number).toDouble() }
             .toDoubleArray()
-        
+
         if (doubleArray.isEmpty()) return Double.NaN
         
         return doubleArray.maxOrNull() ?: Double.NaN
@@ -885,12 +943,12 @@ class DataFrame {
         
         val normalized = doubleArray.map { (it - mean) / std }
         val newValues = normalized.map { it as Any? }
-        val newSeries = Series(newValues, index, colName)
+        val newSeries = Series(newValues, index(), colName)
         
         val newData = data.toMutableMap()
         newData[colName] = newSeries
         
-        return DataFrame(newData, columns, index)
+        return DataFrame(newData, columns)
     }
     
     /**
@@ -906,12 +964,12 @@ class DataFrame {
         val normalized = NativeMath.normalize(doubleArray)
         
         val newValues = normalized.map { it as Any? }
-        val newSeries = Series(newValues, index, colName)
+        val newSeries = Series(newValues, index(), colName)
         
         val newData = data.toMutableMap()
         newData[colName] = newSeries
         
-        return DataFrame(newData, columns, index)
+        return DataFrame(newData, columns)
     }
     
     /**
@@ -939,14 +997,14 @@ class DataFrame {
         
         val result = array1.zip(array2) { a, b -> a + b }
         val newValues = result.map { it as Any? }
-        val newSeries = Series(newValues, index, resultCol)
+        val newSeries = Series(newValues, index(), resultCol)
         
         val newData = data.toMutableMap()
         newData[resultCol] = newSeries
         
         val newColumns = if (resultCol in columns) columns else columns + resultCol
         
-        return DataFrame(newData, newColumns, index)
+        return DataFrame(newData, newColumns)
     }
     
     /**
@@ -969,14 +1027,14 @@ class DataFrame {
         val result = NativeMath.vectorizedAdd(array1, array2)
         
         val newValues = result.map { it as Any? }
-        val newSeries = Series(newValues, index, resultCol)
+        val newSeries = Series(newValues, index(), resultCol)
         
         val newData = data.toMutableMap()
         newData[resultCol] = newSeries
         
         val newColumns = if (resultCol in columns) columns else columns + resultCol
         
-        return DataFrame(newData, newColumns, index)
+        return DataFrame(newData, newColumns)
     }
     
     /**
@@ -1004,14 +1062,14 @@ class DataFrame {
         
         val result = array1.zip(array2) { a, b -> a * b }
         val newValues = result.map { it as Any? }
-        val newSeries = Series(newValues, index, resultCol)
+        val newSeries = Series(newValues, index(), resultCol)
         
         val newData = data.toMutableMap()
         newData[resultCol] = newSeries
         
         val newColumns = if (resultCol in columns) columns else columns + resultCol
         
-        return DataFrame(newData, newColumns, index)
+        return DataFrame(newData, newColumns)
     }
     
     /**
@@ -1034,14 +1092,14 @@ class DataFrame {
         val result = NativeMath.vectorizedMultiply(array1, array2)
         
         val newValues = result.map { it as Any? }
-        val newSeries = Series(newValues, index, resultCol)
+        val newSeries = Series(newValues, index(), resultCol)
         
         val newData = data.toMutableMap()
         newData[resultCol] = newSeries
         
         val newColumns = if (resultCol in columns) columns else columns + resultCol
         
-        return DataFrame(newData, newColumns, index)
+        return DataFrame(newData, newColumns)
     }
     
     /**
@@ -1134,7 +1192,8 @@ class DataFrame {
         }
         
         val series = data[by]!!
-        val sortedPairs = index.zip(series.values()).sortedBy { 
+        val indexList = index()
+        val sortedPairs = indexList.zip(series.values()).sortedBy { 
             it.second?.toString() 
         }
         
@@ -1146,7 +1205,7 @@ class DataFrame {
         
         val newIndex = finalPairs.map { it.first }
         val sortedRows = newIndex.map { label ->
-            val pos = index.indexOf(label)
+            val pos = indexList.indexOf(label)
             columns.associate { colName -> colName to data[colName]!![pos] }
         }
         
@@ -1169,9 +1228,10 @@ class DataFrame {
             NativeMath.argsort(doubleArray).toList()
         }
         
-        val newIndex = indices.map { index[it] }
+        val indexList = index()
+        val newIndex = indices.map { indexList[it] }
         val sortedRows = newIndex.map { label ->
-            val pos = index.indexOf(label)
+            val pos = indexList.indexOf(label)
             columns.associate { colName -> colName to data[colName]!![pos] }
         }
         
@@ -1213,8 +1273,8 @@ class DataFrame {
         val mask = NativeMath.greaterThan(doubleArray, threshold)
         val indices = NativeData.where(mask)
         val filteredRows = indices.map { i ->
-            columns.associate { colName2->
-                colName2 to data[colName2]!!.getIndex(i)
+            columns.associate { colName2 ->
+                colName2 to data[colName2]!![i.toInt()]
             }
         }
 
@@ -1312,12 +1372,12 @@ class DataFrame {
         
         val series = data[colName] ?: throw IllegalArgumentException("列不存在: $colName")
         val newValues = series.values().map { if (it == null) value else it }
-        val newSeries = Series(newValues, index, colName)
+        val newSeries = Series(newValues, index(), colName)
         
         val newData = data.toMutableMap()
         newData[colName] = newSeries
         
-        return DataFrame(newData, columns, index)
+        return DataFrame(newData, columns)
     }
     
     /**
@@ -1335,12 +1395,12 @@ class DataFrame {
         val result = NativeData.fillNullWithConstant(doubleArray, value)
         
         val newValues = result.map { it as Any? }
-        val newSeries = Series(newValues, index, colName)
+        val newSeries = Series(newValues, index(), colName)
         
         val newData = data.toMutableMap()
         newData[colName] = newSeries
         
-        return DataFrame(newData, columns, index)
+        return DataFrame(newData, columns)
     }
     
     /**
@@ -1357,7 +1417,8 @@ class DataFrame {
         // 分组并求和
         val groupMap = mutableMapOf<Any?, Double>()
         
-        for (i in index.indices) {
+        val indexList = index()
+        for (i in indexList.indices) {
             val groupKey = groupSeries[i]
             val value = valueSeries[i]
             
@@ -1451,9 +1512,12 @@ class DataFrame {
         
         val resultRows = mutableListOf<Map<String, Any?>>()
         
-        for (i in index.indices) {
+        val indexList = index()
+        val otherIndexList = other.index()
+        
+        for (i in indexList.indices) {
             val thisValue = at(i, on)
-            for (j in other.index.indices) {
+            for (j in otherIndexList.indices) {
                 val otherValue = other.at(j, on)
                 if (thisValue == otherValue) {
                     val row = mutableMapOf<String, Any?>()
@@ -1628,12 +1692,13 @@ class DataFrame {
             return sampleNative(sampleSize)
         }
         
-        if (index.isEmpty()) {
+        val indexList = index()
+        if (indexList.isEmpty()) {
             return this
         }
         
-        val actualSampleSize = kotlin.math.min(sampleSize, index.size)
-        val indices = (0 until index.size).shuffled().take(actualSampleSize)
+        val actualSampleSize = kotlin.math.min(sampleSize, indexList.size)
+        val indices = (0 until indexList.size).shuffled().take(actualSampleSize)
         
         val sampledRows = indices.map { i ->
             columns.associate { colName -> 
@@ -1648,7 +1713,8 @@ class DataFrame {
      * 使用原生方法进行数据采样（高性能）
      */
     private fun sampleNative(sampleSize: Int): DataFrame {
-        if (index.isEmpty()) {
+        val indexList = index()
+        if (indexList.isEmpty()) {
             return this
         }
         
@@ -1706,12 +1772,12 @@ class DataFrame {
         val result = NativeBatch.processBatch(doubleArray, batchSize)
         
         val newValues = result.map { it as Any? }
-        val newSeries = Series(newValues, index, colName)
+        val newSeries = Series(newValues, index(), colName)
         
         val newData = data.toMutableMap()
         newData[colName] = newSeries
         
-        return DataFrame(newData, columns, index)
+        return DataFrame(newData, columns)
     }
     
     /**
@@ -1744,11 +1810,14 @@ class DataFrame {
     private fun leftJoin(other: DataFrame, on: String): DataFrame {
         val resultRows = mutableListOf<Map<String, Any?>>()
         
-        for (i in index.indices) {
+        val indexList = index()
+        val otherIndexList = other.index()
+        
+        for (i in indexList.indices) {
             val thisValue = at(i, on)
             var matched = false
             
-            for (j in other.index.indices) {
+            for (j in otherIndexList.indices) {
                 val otherValue = other.at(j, on)
                 if (thisValue == otherValue) {
                     val row = mutableMapOf<String, Any?>()
@@ -1789,11 +1858,14 @@ class DataFrame {
     private fun rightJoin(other: DataFrame, on: String): DataFrame {
         val resultRows = mutableListOf<Map<String, Any?>>()
         
-        for (j in other.index.indices) {
+        val indexList = index()
+        val otherIndexList = other.index()
+        
+        for (j in otherIndexList.indices) {
             val otherValue = other.at(j, on)
             var matched = false
             
-            for (i in index.indices) {
+            for (i in indexList.indices) {
                 val thisValue = at(i, on)
                 if (thisValue == otherValue) {
                     val row = mutableMapOf<String, Any?>()
@@ -1836,10 +1908,13 @@ class DataFrame {
         val matchedLeft = mutableSetOf<Int>()
         val matchedRight = mutableSetOf<Int>()
         
+        val indexList = index()
+        val otherIndexList = other.index()
+        
         // 先处理匹配的行
-        for (i in index.indices) {
+        for (i in indexList.indices) {
             val thisValue = at(i, on)
-            for (j in other.index.indices) {
+            for (j in otherIndexList.indices) {
                 val otherValue = other.at(j, on)
                 if (thisValue == otherValue) {
                     val row = mutableMapOf<String, Any?>()
@@ -1859,7 +1934,7 @@ class DataFrame {
         }
         
         // 添加左表未匹配的行
-        for (i in index.indices) {
+        for (i in indexList.indices) {
             if (i !in matchedLeft) {
                 val row = mutableMapOf<String, Any?>()
                 columns.forEach { colName ->
@@ -1875,7 +1950,7 @@ class DataFrame {
         }
         
         // 添加右表未匹配的行
-        for (j in other.index.indices) {
+        for (j in otherIndexList.indices) {
             if (j !in matchedRight) {
                 val row = mutableMapOf<String, Any?>()
                 columns.forEach { colName ->
@@ -1893,8 +1968,6 @@ class DataFrame {
         return DataFrame(resultRows)
     }
     
-
-
     companion object {
         /**
          * 从CSV文件读取数据
@@ -2152,7 +2225,8 @@ class DataFrame {
             writer.write("\n")
             
             // 写入数据
-            for (i in index.indices) {
+            val indexList = index()
+            for (i in indexList.indices) {
                 val row = columns.map { colName ->
                     data[colName]!![i]?.toString() ?: ""
                 }
@@ -2177,7 +2251,8 @@ class GroupBy(
         // 获取分组键的唯一值
         val groupKeyValues = mutableSetOf<List<Any?>>()
         
-        for (rowIndex in df.index().indices) {
+        val indexList = df.index()
+        for (rowIndex in indexList.indices) {
             val key = groupCols.map { colName -> df.at(rowIndex, colName) }
             groupKeyValues.add(key)
         }
@@ -2188,7 +2263,7 @@ class GroupBy(
         for (keyValue in groupKeyValues) {
             // 筛选出该分组的所有行
             val groupRows = mutableListOf<Map<String, Any?>>()
-            for (rowIndex in df.index().indices) {
+            for (rowIndex in indexList.indices) {
                 val rowKey = groupCols.map { colName -> df.at(rowIndex, colName) }
                 if (rowKey == keyValue) {
                     // 将 Series<Any> 转换为 Map<String, Any?>
