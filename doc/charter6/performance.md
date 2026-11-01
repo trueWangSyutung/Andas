@@ -1,21 +1,35 @@
-## 第六章：性能优化和最佳实践
+# 第六章：性能优化和最佳实践
 
-### 6.1 性能优化概述
+## 6.0 0.1.5 实测摘要
+
+在 256 MB JVM 堆与 192 MB Android 堆下，使用 15 列、20 万行（约 36 MB）的合成 CSV 测得：
+
+| 场景 | 基线 | 0.1.5 | 说明 |
+| --- | ---: | ---: | --- |
+| JVM 读取 20 万行 | OOM | 1.44 s / 56 MB | 读取后 GC 存活堆 |
+| Android 读取 20 万行 | OOM（10 万行即失败） | 16.0 s / 35 MB | API 36 ARM64 模拟器 |
+| 50k `sum` | 30 ms | 1 ms | 30× |
+| 50k `sortValues` | 2629 ms | 80 ms | 32.9× |
+| 5k × 5k `merge` | 557 ms | 18 ms | 30.9× |
+
+完整实验方法、pandas 2.1.0 对比和图表见 [基准测试与技术报告](../benchmark/report.md)。
+
+## 6.1 性能优化概述
 
 Andas SDK 通过多种技术手段实现了高性能数据处理，包括 JNI 原生代码、OpenMP 并行计算、内存优化等。本章将介绍如何充分利用这些特性，以及在实际应用中的最佳实践。
 
 **优化目标：**
-- ⚡ 最大化计算性能
-- 📊 最小化内存占用
-- 🔄 提供流畅的用户体验
-- 🛡️ 确保稳定性和可靠性
+- 最大化计算性能
+- 最小化内存占用
+- 提供流畅的用户体验
+- 确保稳定性和可靠性
 
-### 6.2 Series 创建性能
+## 6.2 Series 创建性能
 
-#### 6.2.1 高效创建 Series
+### 6.2.1 高效创建 Series
 
 ```kotlin
-// ✅ 推荐：直接创建大数据 Series
+//  推荐：直接创建大数据 Series
 val data = (1..100000).map { it }
 val start = System.currentTimeMillis()
 val series = Andas.getInstance().createSeries(data)
@@ -32,10 +46,10 @@ println("耗时: ${time}ms")
 耗时: 15ms
 ```
 
-#### 6.2.2 批量操作优化
+### 6.2.2 批量操作优化
 
 ```kotlin
-// ✅ 推荐：使用原生方法进行批量处理
+//  推荐：使用原生方法进行批量处理
 val largeData = (1..500000).map { it * 1.0 }
 val start = System.currentTimeMillis()
 
@@ -46,9 +60,9 @@ val time = System.currentTimeMillis() - start
 println("批量处理 ${largeData.size} 条数据，耗时: ${time}ms")
 ```
 
-### 6.3 JNI vs Kotlin 性能对比
+## 6.3 JNI vs Kotlin 性能对比
 
-#### 6.3.1 求和性能对比
+### 6.3.1 求和性能对比
 
 ```kotlin
  val data = (1..100000).map { it.toDouble() }
@@ -73,7 +87,7 @@ println("JNI 求和: ${time2}ms (结果: $jniSum)")
 println("性能加速比: ${speedup}x")
 ```
 
-**典型输出：**
+**示例输出（数值随设备与运行时变化）：**
 ```
 === 性能对比 ===
 Kotlin 求和: 92ms (结果: 5000050000.0)
@@ -81,7 +95,10 @@ JNI 求和: 65ms (结果: 5000050000.0)
 性能加速比: 1.51x
 ```
 
-#### 6.3.2 不同数据规模的性能表现
+> 注：JNI 与 Kotlin 的绝对耗时受设备、ART/JVM 版本、JIT 预热与数据分布影响；
+> 0.1.5 的受控实验数据见本章 6.0 与[基准测试报告](../benchmark/report.md)。
+
+### 6.3.2 不同数据规模的性能表现
 
 ```kotlin
 fun benchmarkDifferentSizes() {
@@ -107,12 +124,12 @@ fun benchmarkDifferentSizes() {
 }
 ```
 
-### 6.4 内存管理优化
+## 6.4 内存管理优化
 
-#### 6.4.1 及时释放资源
+### 6.4.1 及时释放资源
 
 ```kotlin
-// ✅ 推荐：使用 try-finally 确保资源释放
+//  推荐：使用 try-finally 确保资源释放
 fun processLargeDataset() {
     val largeDf = Andas.getInstance().readCSVFromAssets("large_dataset.csv")
     
@@ -127,7 +144,7 @@ fun processLargeDataset() {
     }
 }
 
-// ✅ 推荐：在 ViewModel 中正确管理生命周期
+//  推荐：在 ViewModel 中正确管理生命周期
 class DataViewModel : ViewModel() {
     private var cachedDf: DataFrame? = null
     
@@ -156,10 +173,10 @@ class DataViewModel : ViewModel() {
 }
 ```
 
-#### 6.4.2 分批处理大文件
+### 6.4.2 分批处理大文件
 
 ```kotlin
-// ✅ 推荐：分批处理避免内存溢出
+//  推荐：分批处理避免内存溢出
 fun processLargeCSV() {
     Andas.getInstance().readCSVFromAssetsAsync(
         "very_large.csv",
@@ -187,12 +204,12 @@ fun processLargeCSV() {
 }
 ```
 
-### 6.5 计算性能优化
+## 6.5 计算性能优化
 
-#### 6.5.1 充分利用原生计算
+### 6.5.1 充分利用原生计算
 
 ```kotlin
-// ✅ 推荐：使用原生统计方法
+//  推荐：使用原生统计方法
 val df = Andas.getInstance().createDataFrame(
     mapOf(
         "data" to (1..100000).map { it * 1.1 }
@@ -204,14 +221,14 @@ val sum = df.sumNative("data")
 val mean = df.meanNative("data")
 val std = df.stdNative("data")
 
-// ❌ 避免：手动实现统计函数
+//  避免：手动实现统计函数
 val slowMean = df["data"]?.toList()?.average()  // 慢很多
 ```
 
-#### 6.5.2 并行计算配置
+### 6.5.2 并行计算配置
 
 ```kotlin
-// ✅ 推荐：根据设备配置优化线程池
+//  推荐：根据设备配置优化线程池
 val cores = Runtime.getRuntime().availableProcessors()
 val config = Andas.AndasConfig().apply {
     // 通常设置为 CPU 核心数的 1-2 倍
@@ -223,12 +240,12 @@ val config = Andas.AndasConfig().apply {
 Andas.initialize(context, config)
 ```
 
-### 6.6 异步操作优化
+## 6.6 异步操作优化
 
-#### 6.6.1 选择合适的异步方法
+### 6.6.1 选择合适的异步方法
 
 ```kotlin
-// ✅ 推荐：CPU 密集型任务使用 executeAsync
+//  推荐：CPU 密集型任务使用 executeAsync
 Andas.getInstance().executeAsync(
     task = {
         val df = createLargeDataFrame()
@@ -242,7 +259,7 @@ Andas.getInstance().executeAsync(
     }
 )
 
-// ✅ 推荐：IO 密集型任务使用 executeIO
+//  推荐：IO 密集型任务使用 executeIO
 Andas.getInstance().executeIO(
     task = {
         val file = File(context.filesDir, "data.csv")
@@ -257,10 +274,10 @@ Andas.getInstance().executeIO(
 )
 ```
 
-#### 6.6.2 链式异步操作
+### 6.6.2 链式异步操作
 
 ```kotlin
-// ✅ 推荐：使用链式操作减少回调嵌套
+//  推荐：使用链式操作减少回调嵌套
 fun processDataFlow() {
     Andas.getInstance().readCSVFromAssetsAsync(
         "input.csv",
@@ -292,9 +309,9 @@ fun processDataFlow() {
 }
 ```
 
-### 6.7 数据处理优化
+## 6.7 数据处理优化
 
-#### 6.7.1 高效的数据选择
+### 6.7.1 高效的数据选择
 
 ```kotlin
 val df = Andas.getInstance().createDataFrame(
@@ -305,22 +322,22 @@ val df = Andas.getInstance().createDataFrame(
     )
 )
 
-// ✅ 推荐：使用多列选择
+//  推荐：使用多列选择
 val selected = df[listOf("name", "salary")]  // 高效
 
-// ✅ 推荐：使用条件筛选
+//  推荐：使用条件筛选
 val filtered = df.filter { row ->
     row.getInt("age") > 28
 }
 
-// ❌ 避免：循环逐行处理
+//  避免：循环逐行处理
 val slowResult = df.toList().filter { it["age"] as Int > 28 }  // 慢
 ```
 
-#### 6.7.2 批量操作优化
+### 6.7.2 批量操作优化
 
 ```kotlin
-// ✅ 推荐：批量处理大数据集
+//  推荐：批量处理大数据集
 val largeDf = Andas.getInstance().createDataFrame(
     mapOf(
         "id" to (1..100000).toList(),
@@ -329,23 +346,15 @@ val largeDf = Andas.getInstance().createDataFrame(
 )
 
 // 使用批量处理
-val result = largeDf.processBatch(batchSize = 5000) { batch ->
-    // 对每批进行处理
-    batch.map { row ->
-        mapOf(
-            "id" to row.getInt("id"),
-            "doubled" to row.getDouble("value") * 2
-        )
-    }
-}
+val result = largeDf.processBatch("value", batchSize = 5000)
 ```
 
-### 6.8 错误处理和稳定性
+## 6.8 错误处理和稳定性
 
-#### 6.8.1 完整的错误处理
+### 6.8.1 完整的错误处理
 
 ```kotlin
-// ✅ 推荐：全面的错误处理
+//  推荐：全面的错误处理
 fun safeDataProcessing() {
     try {
         Andas.getInstance().readCSVFromAssetsAsync(
@@ -386,10 +395,10 @@ fun safeDataProcessing() {
 }
 ```
 
-#### 6.8.2 资源清理
+### 6.8.2 资源清理
 
 ```kotlin
-// ✅ 推荐：在适当时候清理资源
+//  推荐：在适当时候清理资源
 class DataProcessor : ViewModel() {
     private var currentDf: DataFrame? = null
     
@@ -418,12 +427,12 @@ class DataProcessor : ViewModel() {
 }
 ```
 
-### 6.9 性能监控和调试
+## 6.9 性能监控和调试
 
-#### 6.9.1 性能基准测试
+### 6.9.1 性能基准测试
 
 ```kotlin
-// ✅ 推荐：进行性能基准测试
+//  推荐：进行性能基准测试
 fun benchmarkPerformance() {
     val sizes = listOf(1000, 10000, 100000, 1000000)
     
@@ -450,10 +459,10 @@ fun benchmarkPerformance() {
 }
 ```
 
-#### 6.9.2 调试模式
+### 6.9.2 调试模式
 
 ```kotlin
-// ✅ 推荐：开发阶段开启调试模式
+//  推荐：开发阶段开启调试模式
 val config = Andas.AndasConfig().apply {
     debugMode = BuildConfig.DEBUG
     logLevel = if (BuildConfig.DEBUG) Andas.LogLevel.DEBUG else Andas.LogLevel.INFO
@@ -469,12 +478,12 @@ if (BuildConfig.DEBUG) {
 }
 ```
 
-### 6.10 平台特定优化
+## 6.10 平台特定优化
 
-#### 6.10.1 Android 特定优化
+### 6.10.1 Android 特定优化
 
 ```kotlin
-// ✅ 推荐：在 Application 中初始化
+//  推荐：在 Application 中初始化
 class MyApplication : Application() {
     override fun onCreate() {
         super.onCreate()
@@ -491,7 +500,7 @@ class MyApplication : Application() {
     }
 }
 
-// ✅ 推荐：在后台线程处理大数据
+//  推荐：在后台线程处理大数据
 class DataRepository {
     suspend fun loadData(): DataFrame = withContext(Dispatchers.IO) {
         // IO 操作在后台线程
@@ -505,10 +514,10 @@ class DataRepository {
 }
 ```
 
-#### 6.10.2 内存敏感优化
+### 6.10.2 内存敏感优化
 
 ```kotlin
-// ✅ 推荐：根据设备内存调整策略
+//  推荐：根据设备内存调整策略
 fun getOptimalBatchSize(): Int {
     val maxMemory = Runtime.getRuntime().maxMemory()
     val availableMemory = Runtime.getRuntime().freeMemory()
@@ -524,54 +533,54 @@ fun getOptimalBatchSize(): Int {
 val batchSize = getOptimalBatchSize()
 ```
 
-### 6.11 最佳实践总结
+## 6.11 最佳实践总结
 
-#### 6.11.1 性能优化检查清单
+### 6.11.1 性能优化检查清单
 
 ```kotlin
 /**
  * Andas SDK 性能优化检查清单
  * 
  * 1. 数据结构选择
- *    ✅ 使用合适的数据类型
- *    ✅ 避免不必要的类型转换
+ *     使用合适的数据类型
+ *     避免不必要的类型转换
  *    
  * 2. 内存管理
- *    ✅ 及时释放大对象
- *    ✅ 分批处理大数据集
- *    ✅ 在适当时候建议 GC
+ *     及时释放大对象
+ *     分批处理大数据集
+ *     在适当时候建议 GC
  *    
  * 3. 计算优化
- *    ✅ 使用原生统计方法
- *    ✅ 配置合适的线程池
- *    ✅ 利用并行计算
+ *     使用原生统计方法
+ *     配置合适的线程池
+ *     利用并行计算
  *    
  * 4. 异步操作
- *    ✅ 选择合适的异步方法
- *    ✅ 链式操作减少嵌套
- *    ✅ 完整的错误处理
+ *     选择合适的异步方法
+ *     链式操作减少嵌套
+ *     完整的错误处理
  *    
  * 5. 数据处理
- *    ✅ 高效的数据选择
- *    ✅ 批量操作
- *    ✅ 避免循环处理
+ *     高效的数据选择
+ *     批量操作
+ *     避免循环处理
  *    
  * 6. 错误处理
- *    ✅ 全面的异常捕获
- *    ✅ 合理的错误恢复
- *    ✅ 资源清理
+ *     全面的异常捕获
+ *     合理的错误恢复
+ *     资源清理
  *    
  * 7. 监控调试
- *    ✅ 性能基准测试
- *    ✅ 调试模式配置
- *    ✅ 统计信息监控
+ *     性能基准测试
+ *     调试模式配置
+ *     统计信息监控
  */
 ```
 
-#### 6.11.2 性能优化示例
+### 6.11.2 性能优化示例
 
 ```kotlin
-// ✅ 完整的优化示例
+//  完整的优化示例
 class OptimizedDataProcessor(private val context: Context) {
     
     private val batchSize = getOptimalBatchSize()
@@ -656,7 +665,7 @@ class MainViewModel : ViewModel() {
 }
 ```
 
-### 6.12 小结
+## 6.12 小结
 
 本章详细介绍了 Andas SDK 的性能优化策略，包括：
 

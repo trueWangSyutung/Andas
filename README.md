@@ -1,8 +1,11 @@
 # Andas SDK
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Kotlin](https://img.shields.io/badge/Kotlin-1.8+-orange.svg)](https://kotlinlang.org/)
+[![Kotlin](https://img.shields.io/badge/Kotlin-2.0-orange.svg)](https://kotlinlang.org/)
 [![Android](https://img.shields.io/badge/Android-26+-green.svg)](https://developer.android.com/)
+
+> **项目状态**：`0.1.5` 已发布，核心 API 稳定；欢迎通过 Issue 反馈问题与性能数据。
+
 [![](https://jitpack.io/v/trueWangSyutung/Andas.svg)](https://jitpack.io/#trueWangSyutung/Andas)
 
 ## 项目简介
@@ -14,12 +17,14 @@ Andas SDK (Android Data Analysis System) 是一个专为 Android 平台设计的
 
 ### 核心特性
 
-- 📊 **类 Pandas API**: 熟悉的 API 设计，降低学习成本
-- 🔧 **混合架构**: Kotlin + C++ + OpenMP，智能降级
-- 🧵 **异步支持**: 完整的异步操作和线程池管理
-- 🌍 **中文文档**: 完整的中文技术文档
-- 🚀 **流式 CSV**: 列式解析，大文件不 OOM；37MB / 20 万行 × 15 列约 1.6s
-- ⚡ **列式计算**: 共享范围索引、原始类型数组、单次遍历统计、哈希分组/连接
+| 能力 | 说明 |
+| --- | --- |
+| 类 pandas API | `Series` / `DataFrame`、筛选、排序、分组、连接、空值处理 |
+| 流式 CSV | 列式解析，不整文件物化；36 MB / 20 万行 × 15 列约 1.4 s（JVM） |
+| 列式计算 | 共享范围索引、原始类型数组、单次遍历统计、哈希分组/连接 |
+| 混合架构 | Kotlin + C++/JNI + OpenMP；JVM 环境自动回退到 Kotlin |
+| 异步 I/O | CSV 读写、线程池与回调式异步 API |
+| 文档完善 | 用户指南、API 参考、基准测试与技术报告 |
 
 > 文档站点（GitHub Pages 默认域名）：<https://truewangsyutung.github.io/Andas/>
 
@@ -95,14 +100,20 @@ Andas/
 │   └── build.gradle.kts
 ├── app/                     # 演示应用
 │   └── src/main/java/...   # 完整功能演示
-└── 文档/
-    ├── README.md           # 项目总览
-    ├── API_REFERENCE.md    # API 文档
-    ├── QUICK_START.md      # 快速入门
-    ├── JNI_INTEGRATION.md  # JNI 集成
-    ├── PERFORMANCE_BENCHMARK.md  # 性能测试
-    ├── DEMO_APP_GUIDE.md   # Demo 使用指南
-    └── PROJECT_SUMMARY.md  # 项目总结
+├── doc/                     # 用户指南（GitBook 源文档）
+│   ├── charter1/init.md
+│   ├── charter2/series.md
+│   ├── charter3/dataframe.md
+│   ├── charter4/async.md
+│   ├── charter5/jni.md
+│   └── charter6/performance.md
+├── bench/                   # 性能实验脚本、原始数据与复现指南
+├── report/                  # 英文技术报告（LaTeX / PDF）
+├── site/                    # GitBook 站点配置与构建脚本
+├── BENCHMARK_REPORT.md      # 中文基准测试与技术报告
+├── API_REFERENCE.md         # API 参考
+├── QUICK_START.md           # 快速入门
+└── CHANGELOG_0.1.5.md       # 版本更新日志
 ```
 
 ## 核心功能
@@ -136,20 +147,21 @@ Andas/
 
 ## 文档导航
 
-- 📖 **[快速入门](QUICK_START.md)** - 15 分钟上手
-- 📚 **[API 参考](API_REFERENCE.md)** - 完整 API 文档
-- 🔧 **[JNI 集成](JNI_INTEGRATION.md)** - 原生代码详解
-- 📊 **[性能测试](PERFORMANCE_BENCHMARK.md)** - 基准测试报告
-- 🧪 **[Demo 指南](DEMO_APP_GUIDE.md)** - 演示应用说明
-- 📋 **[项目总结](PROJECT_SUMMARY.md)** - 技术架构总结
+- **[快速入门](QUICK_START.md)**：15 分钟完成依赖、初始化与第一个 DataFrame
+- **[API 参考](API_REFERENCE.md)**：完整 API 与示例
+- **[用户指南](doc/README.md)**：SDK 初始化、Series、DataFrame、异步、JNI、性能
+- **[基准测试报告](BENCHMARK_REPORT.md)**：JVM、Android 与 pandas 对比
+- **[实验复现](bench/README.md)**：数据生成、基线、脚本与命令
+- **[English Technical Report](report/andas-technical-report.pdf)**：英文技术报告 PDF
+- **[在线文档](https://truewangsyutung.github.io/Andas/)**：GitBook 站点
 
 ## 环境要求
 
-- **Android Studio**: Arctic Fox 或更高版本
-- **Android SDK**: API 21+ (Android 5.0+)
-- **NDK**: 21+
-- **Kotlin**: 1.8+
-- **Gradle**: 7.0+
+- **Android Studio**: Ladybug 或更高版本
+- **Android SDK**: API 26+（`minSdk = 26`）
+- **Kotlin**: 2.0+
+- **Gradle**: 8.13+（仓库使用 Gradle Wrapper）
+- **NDK**: 21+（仅从源码构建原生模块时需要）
 
 ## 快速示例
 
@@ -165,19 +177,14 @@ val df = Andas.getInstance().createDataFrame(
     )
 )
 
-// 2. 数据筛选
+// 2. 数据筛选（行值为单元素 Series）
 val filtered = df.filter { row ->
-    (row["sales"] as Int) > 100
+    val sales = row["sales"]?.get(0) as? Int
+    sales != null && sales > 100
 }
 
 // 3. 分组聚合
-val result = filtered.groupBy("region").agg(
-    mapOf(
-        "total_sales" to "sum",
-        "avg_sales" to "mean",
-        "count" to "count"
-    )
-)
+val result = filtered.groupBy("region").sum()
 
 // 4. 异步导出
 Andas.getInstance().exportCSVAsync(
@@ -191,7 +198,7 @@ Andas.getInstance().exportCSVAsync(
 ### 原生性能优化
 
 ```kotlin
-// 使用原生数学运算（3-5 倍加速）
+// 原生数组内核（可用时；JVM 环境自动回退）
 val data = (1..100000).map { it.toDouble() }.toDoubleArray()
 val sum = NativeMath.sumDoubleArray(data)
 val mean = NativeMath.meanDoubleArray(data)
@@ -211,12 +218,12 @@ val normalized = NativeMath.normalize(data)
 
 ## 贡献指南
 
-欢迎测试和反馈！由于本项目由 AI 辅助完成，可能存在以下需要改进的地方：
+欢迎提交 Issue、测试用例、性能数据与使用场景反馈。当前重点关注：
 
-- 🧪 **测试覆盖**: 需要更多边界情况测试
-- 📊 **性能优化**: 特定场景的性能调优
-- 📖 **文档完善**: 更多使用示例和最佳实践
-- 🐛 **Bug 修复**: 发现并修复潜在问题
+- 更多边界情况与设备兼容性测试
+- 原生列式内核与零拷贝缓冲区
+- 文档示例与最佳实践补充
+- Bug 修复与 API 稳定性
 
 ### 反馈方式
 
@@ -235,6 +242,7 @@ val normalized = NativeMath.normalize(data)
 
 ---
 
-**注意**: 本项目代码由 AI 辅助生成，目前处于测试阶段。请在生产环境使用前充分测试。欢迎提交反馈和贡献！
+**说明**：请在引入生产环境前，结合自身数据规模与设备矩阵完成验证。版本发布记录见
+[CHANGELOG_0.1.5.md](CHANGELOG_0.1.5.md)。
 
-**项目状态**: 🧪 测试中 | 🎯 功能完整 | 📈 持续优化
+**项目状态**：0.1.5 已发布 · 功能完整 · 持续优化

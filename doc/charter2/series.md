@@ -1,19 +1,19 @@
-## 第二章：Series API
+# 第二章：Series API
 
-### 2.1 Series 概述
+## 2.1 Series 概述
 
 Series 是 Andas SDK 中的核心数据结构之一，类似于一维数组，可以存储任何数据类型，并通过标签（索引）访问元素。它是构建 DataFrame 的基础，提供了丰富的数据操作和分析功能。
 
 **核心特性：**
-- 📊 灵活的数据类型：支持泛型，可存储任意类型数据
-- 🔍 多索引访问：支持位置索引和标签索引两种方式
-- ⚡ 高性能计算：通过 JNI 集成 C++ 原生代码加速
-- 🛡️ 空值安全：完整的空值检测和处理机制
-- 🔄 链式操作：支持函数式编程风格的链式调用
+- 灵活的数据类型：支持泛型，可存储任意类型数据
+- 多索引访问：支持位置索引和标签索引两种方式
+- 高性能计算：通过 JNI 集成 C++ 原生代码加速
+- 空值安全：完整的空值检测和处理机制
+- 链式操作：支持函数式编程风格的链式调用
 
-### 2.2 创建 Series
+## 2.2 创建 Series
 
-#### 2.2.1 使用工厂函数创建
+### 2.2.1 使用工厂函数创建
 
 ```kotlin
 import cn.ac.oac.libs.andas.factory.andasSeries
@@ -45,7 +45,7 @@ println(indexed)
 // Name: scores, dtype: INT32
 ```
 
-#### 2.2.2 使用 Map 创建
+### 2.2.2 使用 Map 创建
 
 ```kotlin
 import cn.ac.oac.libs.andas.factory.andasSeriesFromMap
@@ -66,7 +66,7 @@ println(grades)
 // Name: grades, dtype: INT32
 ```
 
-#### 2.2.3 使用 Series 构造函数
+### 2.2.3 使用 Series 构造函数
 
 ```kotlin
 import cn.ac.oac.libs.andas.entity.Series
@@ -79,9 +79,9 @@ val series = Series(
 )
 ```
 
-### 2.3 数据访问
+## 2.3 数据访问
 
-#### 2.3.1 位置访问
+### 2.3.1 位置访问
 
 ```kotlin
 val series = andasSeries(listOf(10, 20, 30, 40, 50))
@@ -91,7 +91,7 @@ val value = series[2]  // 输出: 30
 println("位置2的值: $value")
 ```
 
-#### 2.3.2 标签访问
+### 2.3.2 标签访问
 
 ```kotlin
 val series = andasSeries(
@@ -104,7 +104,7 @@ val value = series["b"]  // 输出: 20
 println("标签'b'的值: $value")
 ```
 
-#### 2.3.3 查看数据
+### 2.3.3 查看数据
 
 ```kotlin
 val series = andasSeries((1..100).toList())
@@ -132,9 +132,9 @@ val index = series.index()
 println("大小: $size, 名称: $name, 索引: $index")
 ```
 
-### 2.4 空值处理
+## 2.4 空值处理
 
-#### 2.4.1 检测空值
+### 2.4.1 检测空值
 
 ```kotlin
 val series = andasSeries(listOf(1, null, 3, null, 5))
@@ -150,7 +150,7 @@ println("非空检测: $notNull")
 // 输出: [true, false, true, false, true]
 ```
 
-#### 2.4.2 处理空值
+### 2.4.2 处理空值
 
 ```kotlin
 val series = andasSeries(listOf(1, null, 3, null, 5))
@@ -166,7 +166,7 @@ println("填充空值后: $filled")
 // 输出: [1, 0, 3, 0, 5]
 ```
 
-#### 2.4.3 原生空值处理
+### 2.4.3 原生空值处理
 
 ```kotlin
 val series = andasSeries(listOf(1.0, null, 3.0, null, 5.0))
@@ -185,9 +185,9 @@ val filled = series.fillNullWithConstant(0.0)
 println("原生填充空值: $filled")
 ```
 
-### 2.5 统计功能
+## 2.5 统计功能
 
-#### 2.5.1 唯一值统计
+### 2.5.1 唯一值统计
 
 ```kotlin
 val fruits = andasSeries(listOf("apple", "banana", "apple", "cherry", "banana"))
@@ -203,7 +203,7 @@ println("频次统计: $counts")
 // 输出: {apple=2, banana=2, cherry=1}
 ```
 
-#### 2.5.2 数值统计（原生加速）
+### 2.5.2 数值统计（原生加速）
 
 ```kotlin
 val numbers = andasSeries(listOf(1.0, 2.0, 3.0, 4.0, 5.0))
@@ -229,9 +229,9 @@ println("统计描述: $desc")
 // 输出: {count=5.0, mean=3.0, std=1.5811, min=1.0, max=5.0}
 ```
 
-### 2.6 数据变换
+## 2.6 数据变换
 
-#### 2.6.1 映射变换
+### 2.6.1 映射变换
 
 ```kotlin
 val series = andasSeries(listOf(1, 2, 3, 4, 5))
@@ -247,7 +247,7 @@ println("转换为字符串: $strings")
 // 输出: ["1", "2", "3", "4", "5"]
 ```
 
-#### 2.6.2 筛选过滤
+### 2.6.2 筛选过滤
 
 ```kotlin
 val series = andasSeries(listOf(1, 2, 3, 4, 5))
@@ -262,7 +262,7 @@ val filteredNative = series.filterGreaterThan(3.0)
 println("原生筛选: $filteredNative")
 ```
 
-#### 2.6.3 排序
+### 2.6.3 排序
 
 ```kotlin
 val unsorted = andasSeries(
@@ -287,9 +287,9 @@ val sortedNative = unsorted.sortValuesNative(descending = true)
 println("原生排序: $sortedNative")
 ```
 
-### 2.7 数值计算
+## 2.7 数值计算
 
-#### 2.7.1 累计计算
+### 2.7.1 累计计算
 
 ```kotlin
 val series = andasSeries(listOf(1.0, 2.0, 3.0, 4.0, 5.0))
@@ -300,7 +300,7 @@ println("累计求和: $cumsum")
 // 输出: [1.0, 3.0, 6.0, 10.0, 15.0]
 ```
 
-#### 2.7.2 乘法运算
+### 2.7.2 乘法运算
 
 ```kotlin
 val series = andasSeries(listOf(1, 2, 3, 4, 5))
@@ -311,7 +311,7 @@ println("乘以2: $multiplied")
 // 输出: [2, 4, 6, 8, 10]
 ```
 
-#### 2.7.3 归一化（原生）
+### 2.7.3 归一化（原生）
 
 ```kotlin
 val series = andasSeries(listOf(1.0, 2.0, 3.0, 4.0, 5.0))
@@ -322,7 +322,7 @@ println("归一化: $normalized")
 // 输出: [0.0, 0.25, 0.5, 0.75, 1.0]
 ```
 
-### 2.8 格式转换
+## 2.8 格式转换
 
 ```kotlin
 val series = andasSeries(
@@ -347,9 +347,9 @@ println("转换为数组: $array")
 // 输出: [10, 20, 30]
 ```
 
-### 2.9 高性能原生操作
+## 2.9 高性能原生操作
 
-#### 2.9.1 批量处理
+### 2.9.1 批量处理
 
 ```kotlin
 val series = andasSeries((1..10000).map { it.toDouble() })
@@ -359,7 +359,7 @@ val processed = series.processBatch(batchSize = 1000)
 println("批量处理完成，大小: ${processed.size()}")
 ```
 
-#### 2.9.2 采样操作
+### 2.9.2 采样操作
 
 ```kotlin
 val series = andasSeries((1..10000).toList())
@@ -369,7 +369,7 @@ val sample = series.sample(100)
 println("采样结果，大小: ${sample.size()}")
 ```
 
-#### 2.9.3 向量化运算
+### 2.9.3 向量化运算
 
 ```kotlin
 // 向量化加法
@@ -384,7 +384,7 @@ val dotProduct = series1.dot(series2)  // 140.0
 val norm = series1.norm()  // sqrt(14) ≈ 3.74
 ```
 
-### 2.10 检查原生库状态
+## 2.10 检查原生库状态
 
 ```kotlin
 val series = andasSeries(listOf(1.0, 2.0, 3.0))
@@ -398,7 +398,7 @@ val time = series.benchmarkOperation(1, 1000000)  // 操作类型1，数据量10
 println("基准测试耗时: ${time}ms")
 ```
 
-### 2.11 扩展函数
+## 2.11 扩展函数
 
 ```kotlin
 import cn.ac.oac.libs.andas.entity.Series
@@ -417,7 +417,7 @@ val maxValue = series.maxOrNull()  // 5
 val minValue = series.minOrNull()  // 1
 ```
 
-### 2.12 错误处理
+## 2.12 错误处理
 
 ```kotlin
 val series = andasSeries(listOf(1, 2, 3))
@@ -438,7 +438,7 @@ try {
 }
 ```
 
-### 2.13 小结
+## 2.13 小结
 
 本章详细介绍了 Series API 的使用方法，包括：
 

@@ -1,21 +1,21 @@
-## 第三章：DataFrame API
+# 第三章：DataFrame API
 
-### 3.1 DataFrame 概述
+## 3.1 DataFrame 概述
 
 DataFrame 是 Andas SDK 中最核心的数据结构，类似于二维表格，具有行和列的结构。它提供了强大的数据操作和分析能力，是数据处理的主要工具。
 
 **核心特性：**
-- 📊 二维表格结构：支持行和列的数据组织
-- 🎯 多数据类型：每列可以有不同的数据类型
-- ⚡ 高性能操作：通过 JNI 集成 C++ 原生代码加速
-- 🔍 强大索引：支持多种索引和选择方式
-- 📈 统计分析：内置丰富的统计函数
-- 🔄 链式操作：支持流畅的函数式 API
-- 📁 灵活IO：支持CSV、Assets、私有存储等多种数据源
+- 二维表格结构：支持行和列的数据组织
+- 多数据类型：每列可以有不同的数据类型
+- 高性能操作：通过 JNI 集成 C++ 原生代码加速
+- 强大索引：支持多种索引和选择方式
+- 统计分析：内置丰富的统计函数
+- 链式操作：支持流畅的函数式 API
+- 灵活IO：支持CSV、Assets、私有存储等多种数据源
 
-### 3.2 创建 DataFrame
+## 3.2 创建 DataFrame
 
-#### 3.2.1 从列数据创建（使用工厂函数）
+### 3.2.1 从列数据创建（使用工厂函数）
 
 ```kotlin
 import cn.ac.oac.libs.andas.factory.andasDataFrame
@@ -38,7 +38,7 @@ println(df)
 // David   40     80000     Finance
 ```
 
-#### 3.2.2 从行数据创建（使用工厂函数）
+### 3.2.2 从行数据创建（使用工厂函数）
 
 ```kotlin
 import cn.ac.oac.libs.andas.factory.andasDataFrameFromRows
@@ -58,7 +58,7 @@ println(df)
 // Charlie 35     78.0
 ```
 
-#### 3.2.3 使用 DataFrame 构造函数
+### 3.2.3 使用 DataFrame 构造函数
 
 ```kotlin
 import cn.ac.oac.libs.andas.entity.DataFrame
@@ -80,9 +80,9 @@ val df2 = DataFrame(
 )
 ```
 
-### 3.3 数据查看
+## 3.3 数据查看
 
-#### 3.3.1 查看基本信息
+### 3.3.1 查看基本信息
 
 ```kotlin
 val df = andasDataFrame(
@@ -120,7 +120,7 @@ println("数据类型:\n$dtypes")
 println(df)
 ```
 
-#### 3.3.2 检查原生库状态
+### 3.3.2 检查原生库状态
 
 ```kotlin
 // 检查原生库是否可用
@@ -132,9 +132,9 @@ val time = df.benchmarkOperation(1, 1000000)  // 操作类型1，数据量100万
 println("基准测试耗时: ${time}ms")
 ```
 
-### 3.4 数据选择
+## 3.4 数据选择
 
-#### 3.4.1 列选择
+### 3.4.1 列选择
 
 ```kotlin
 val df = andasDataFrame(
@@ -158,7 +158,7 @@ val selected2 = df.selectColumns("name", "age")
 println("使用 selectColumns:\n$selected2")
 ```
 
-#### 3.4.2 行选择
+### 3.4.2 行选择
 
 ```kotlin
 // 选择单行 - 返回 Map<String, Series<Any>?>
@@ -177,7 +177,7 @@ println("位置0的行: $rowByPos")
 // val slice = df.slice(1, 3)
 ```
 
-#### 3.4.3 条件筛选
+### 3.4.3 条件筛选
 
 ```kotlin
 // 筛选年龄大于28的行
@@ -197,7 +197,7 @@ val filtered2 = df.filter { row ->
 println("年龄 > 25 且 薪资 > 55000:\n$filtered2")
 ```
 
-#### 3.4.4 单元格值获取
+### 3.4.4 单元格值获取
 
 ```kotlin
 // 获取指定单元格值
@@ -210,9 +210,9 @@ val value3 = df.at(0, "salary")  // 50000
 println("单元格值: $value1, $value2, $value3")
 ```
 
-### 3.5 数据操作
+## 3.5 数据操作
 
-#### 3.5.1 新增列
+### 3.5.1 新增列
 
 ```kotlin
 val df = andasDataFrame(
@@ -247,7 +247,7 @@ val dfWithNewCol = df.addColumn("bonus_amount", newData)
 println("新增数据列:\n$dfWithNewCol")
 ```
 
-#### 3.5.2 删除列
+### 3.5.2 删除列
 
 ```kotlin
 // 删除单列
@@ -259,7 +259,7 @@ val dfSimple = df.dropColumns("age", "salary")
 println("删除多列:\n$dfSimple")
 ```
 
-#### 3.5.3 重命名列
+### 3.5.3 重命名列
 
 ```kotlin
 // 重命名列
@@ -273,7 +273,7 @@ val dfRenamed = df.rename(
 println("重命名后:\n$dfRenamed")
 ```
 
-#### 3.5.4 复制 DataFrame
+### 3.5.4 复制 DataFrame
 
 ```kotlin
 // 复制 DataFrame
@@ -288,9 +288,9 @@ val dfModified = df.copy(
 println("修改后的复制:\n$dfModified")
 ```
 
-### 3.6 统计计算
+## 3.6 统计计算
 
-#### 3.6.1 基础统计（优先使用原生方法）
+### 3.6.1 基础统计（优先使用原生方法）
 
 ```kotlin
 val df = andasDataFrame(
@@ -319,7 +319,7 @@ println("数学标准差: $mathStd")
 println("英语方差: $englishVar")
 ```
 
-#### 3.6.2 相关系数矩阵
+### 3.6.2 相关系数矩阵
 
 ```kotlin
 // 计算相关系数矩阵
@@ -327,7 +327,7 @@ val correlation = df.corr()
 println("相关系数矩阵:\n$correlation")
 ```
 
-#### 3.6.3 统计描述
+### 3.6.3 统计描述
 
 ```kotlin
 // 对单列进行描述性统计
@@ -345,7 +345,7 @@ mathStats.forEach { (key, value) ->
 // max: 92.0
 ```
 
-#### 3.6.4 归一化
+### 3.6.4 归一化
 
 ```kotlin
 // 对数学成绩进行标准归一化
@@ -353,9 +353,9 @@ val normalizedDF = df.normalize("math")
 println("归一化后的数学成绩:\n$normalizedDF")
 ```
 
-### 3.7 向量化运算
+## 3.7 向量化运算
 
-#### 3.7.1 向量化加法
+### 3.7.1 向量化加法
 
 ```kotlin
 // 创建两个数值列
@@ -376,7 +376,7 @@ println("向量化加法结果:\n$resultDF")
 //      4.0, 40.0, 44.0
 ```
 
-#### 3.7.2 向量化乘法
+### 3.7.2 向量化乘法
 
 ```kotlin
 val resultDF = df.vectorizedMultiply("col1", "col2", "product")
@@ -388,23 +388,23 @@ println("向量化乘法结果:\n$resultDF")
 //      4.0, 40.0, 160.0
 ```
 
-#### 3.7.3 点积计算
+### 3.7.3 点积计算
 
 ```kotlin
 val dotProduct = df.dotProduct("col1", "col2")
 println("点积: $dotProduct")  // 1*10 + 2*20 + 3*30 + 4*40 = 300
 ```
 
-#### 3.7.4 范数计算
+### 3.7.4 范数计算
 
 ```kotlin
 val norm = df.norm("col1")
 println("范数: $norm")  // sqrt(1^2 + 2^2 + 3^2 + 4^2) = sqrt(30) ≈ 5.477
 ```
 
-### 3.8 空值处理
+## 3.8 空值处理
 
-#### 3.8.1 检测空值
+### 3.8.1 检测空值
 
 ```kotlin
 val df = andasDataFrame(
@@ -428,7 +428,7 @@ val nullIndices = df.findNullIndices("name")
 println("name列空值索引: $nullIndices")
 ```
 
-#### 3.8.2 处理空值
+### 3.8.2 处理空值
 
 ```kotlin
 // 丢弃包含空值的行
@@ -448,9 +448,9 @@ val droppedDF = df.dropNullValues("age")
 println("丢弃age列空值:\n$droppedDF")
 ```
 
-### 3.9 分组与聚合
+## 3.9 分组与聚合
 
-#### 3.9.1 分组求和
+### 3.9.1 分组求和
 
 ```kotlin
 val df = andasDataFrame(
@@ -465,7 +465,7 @@ val groupedSum = df.groupBySum("department", "salary")
 println("部门薪资总和:\n$groupedSum")
 ```
 
-#### 3.9.2 通用分组聚合
+### 3.9.2 通用分组聚合
 
 ```kotlin
 // 使用 GroupBy 类
@@ -493,9 +493,9 @@ val aggResult = df.agg(
 println("自定义聚合:\n$aggResult")
 ```
 
-### 3.10 排序与筛选
+## 3.10 排序与筛选
 
-#### 3.10.1 排序
+### 3.10.1 排序
 
 ```kotlin
 val df = andasDataFrame(
@@ -519,7 +519,7 @@ val indices = df.sortIndices("age")
 println("年龄排序索引: $indices")
 ```
 
-#### 3.10.2 高级筛选
+### 3.10.2 高级筛选
 
 ```kotlin
 // 大于阈值筛选
@@ -531,9 +531,9 @@ val whereResult = df.where("age", 30)
 println("年龄 > 30:\n$whereResult")
 ```
 
-### 3.11 数据合并与连接
+## 3.11 数据合并与连接
 
-#### 3.11.1 数据合并
+### 3.11.1 数据合并
 
 ```kotlin
 val df1 = andasDataFrame(
@@ -555,7 +555,7 @@ val merged = df1.merge(df2, "id")
 println("合并结果:\n$merged")
 ```
 
-#### 3.11.2 SQL风格连接
+### 3.11.2 SQL风格连接
 
 ```kotlin
 // 内连接（默认）
@@ -576,7 +576,7 @@ println("右连接:\n$rightJoin")
 println("全外连接:\n$outerJoin")
 ```
 
-#### 3.11.3 多表合并
+### 3.11.3 多表合并
 
 ```kotlin
 val df3 = andasDataFrame(
@@ -591,9 +591,9 @@ val multiMerged = df1.mergeMultiple(listOf(df2, df3), "id")
 println("多表合并:\n$multiMerged")
 ```
 
-### 3.12 数据采样与批量处理
+## 3.12 数据采样与批量处理
 
-#### 3.12.1 数据采样
+### 3.12.1 数据采样
 
 ```kotlin
 val df = andasDataFrame(
@@ -609,7 +609,7 @@ println("采样结果:\n$sample")
 println("采样形状: ${sample.shape()}")
 ```
 
-#### 3.12.2 批量处理
+### 3.12.2 批量处理
 
 ```kotlin
 // 批量处理（适用于大数据集）
@@ -617,9 +617,9 @@ val processedDF = df.processBatch("value", batchSize = 1000)
 println("批量处理完成，形状: ${processedDF.shape()}")
 ```
 
-### 3.13 数据导出与导入
+## 3.13 数据导出与导入
 
-#### 3.13.1 CSV 导出
+### 3.13.1 CSV 导出
 
 ```kotlin
 import java.io.File
@@ -630,7 +630,7 @@ df.toCSV(file)
 println("导出成功: ${file.absolutePath}")
 ```
 
-#### 3.13.2 使用 DataFrameIO 类
+### 3.13.2 使用 DataFrameIO 类
 
 ```kotlin
 import cn.ac.oac.libs.andas.entity.DataFrameIO
@@ -659,7 +659,7 @@ DataFrameIO.saveToPrivateStorage(context, "output.csv", df)
 DataFrameIO.saveToExternalStorage("/sdcard/output.csv", df)
 ```
 
-#### 3.13.3 异步IO操作
+### 3.13.3 异步IO操作
 
 ```kotlin
 // 异步读取Assets
@@ -688,9 +688,9 @@ DataFrameIO.saveToPrivateStorageAsync(
 )
 ```
 
-### 3.14 扩展函数
+## 3.14 扩展函数
 
-#### 3.14.1 便捷IO操作
+### 3.14.1 便捷IO操作
 
 ```kotlin
 import cn.ac.oac.libs.andas.entity.saveToPrivateStorage
@@ -701,25 +701,25 @@ df.saveToPrivateStorage(context, "data.csv")
 df.saveToExternalStorage("/sdcard/data.csv")
 ```
 
-### 3.15 性能优化建议
+## 3.15 性能优化建议
 
-#### 3.15.1 原生方法优先
+### 3.15.1 原生方法优先
 
 ```kotlin
-// ✅ 推荐：自动选择最优实现
+//  推荐：自动选择最优实现
 val sum = df.sum("salary")
 val mean = df.mean("age")
 
-// ❌ 避免：手动实现复杂逻辑
+//  避免：手动实现复杂逻辑
 val manualSum = df["salary"]?.values()
     ?.filterNotNull()
     ?.sumOf { (it as Number).toDouble() }
 ```
 
-#### 3.15.2 批量操作
+### 3.15.2 批量操作
 
 ```kotlin
-// ✅ 推荐：批量处理大数据集
+//  推荐：批量处理大数据集
 val largeDF = andasDataFrame(
     mapOf(
         "data" to (1..1000000).map { it * 1.0 }
@@ -727,14 +727,14 @@ val largeDF = andasDataFrame(
 )
 val result = largeDF.processBatch("data", 10000)
 
-// ❌ 避免：逐行处理
+//  避免：逐行处理
 // 不推荐的逐行处理方式
 ```
 
-#### 3.15.3 链式操作
+### 3.15.3 链式操作
 
 ```kotlin
-// ✅ 推荐：链式操作
+//  推荐：链式操作
 val result = df
     .filterGreaterThan("age", 25)
     .addColumn("category") { row ->
@@ -746,14 +746,14 @@ val result = df
         }
     }
     .groupBy("category")
-    .agg(mapOf("salary" to "mean"))
+    .mean()
 
-// ❌ 避免：创建大量临时变量
+//  避免：创建大量临时变量
 ```
 
-### 3.16 错误处理
+## 3.16 错误处理
 
-#### 3.16.1 常见异常处理
+### 3.16.1 常见异常处理
 
 ```kotlin
 try {
@@ -776,7 +776,7 @@ try {
 }
 ```
 
-#### 3.16.2 原生库可用性检查
+### 3.16.2 原生库可用性检查
 
 ```kotlin
 if (df.isNativeAvailable()) {
@@ -788,7 +788,7 @@ if (df.isNativeAvailable()) {
 }
 ```
 
-### 3.17 小结
+## 3.17 小结
 
 本章详细介绍了 DataFrame API 的使用方法，包括：
 

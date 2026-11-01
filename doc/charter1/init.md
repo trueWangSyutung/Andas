@@ -1,10 +1,10 @@
 
-## SDK的初始化
+# SDK的初始化
 
 Andas SDK 采用单例模式设计， 通过 Andas.initialize() 方法进行初始化。
 SDK 支持快速初始化和自定义配置两种方式。
 
-#### 快速初始化（推荐）：
+### 快速初始化（推荐）：
 ```kotlin
 // 在 Application.onCreate() 或 Activity.onCreate() 中
 Andas.initialize(this) {
@@ -13,7 +13,7 @@ Andas.initialize(this) {
     timeoutSeconds = 60L
 }
 ```
-#### 标准初始化
+### 标准初始化
 
 ```kotlin
 // 1. 获取实例
@@ -36,7 +36,7 @@ val config = Andas.AndasConfig().apply {
 instance.init(this, config)
 ```
 
-#### 配置参数详解
+### 配置参数详解
 
 `AndasConfig` 类提供了丰富的配置选项：
 
@@ -58,7 +58,7 @@ __日志级别说明：__
 - `ERROR`: 仅输出错误信息
 - `NONE`: 不输出任何日志
 
-### 初始化的最佳实践
+## 初始化的最佳实践
 __推荐做法：__
 
 我们推荐只在应用启动的时候初始化一次。重复的初始化无效，且在异步任务中初始化可能导致竞态条件。
@@ -97,7 +97,7 @@ fun getInstance(): Andas {
 
 这意味着您可以在多个线程中安全地调用 `getInstance()`，但建议仍然在主线程中进行初始化。
 
-### 配置优化建议
+## 配置优化建议
 __对于数据密集型应用：__
 
 ```kotlin
@@ -138,7 +138,7 @@ Andas.initialize(this) {
 }
 ```
 
-### 错误处理和常见问题
+## 错误处理和常见问题
 __1. 重复初始化：__
 
 ```kotlin
@@ -154,7 +154,7 @@ __2. 配置参数无效：__
 
 ```kotlin
 Andas.initialize(this) {
-    maxConcurrentTasks = 0  // ❌ 会抛出异常
+    maxConcurrentTasks = 0  //  会抛出异常
 }
 // 抛出: IllegalArgumentException: 最大并发任务数必须大于0
 ```
@@ -162,7 +162,7 @@ Andas.initialize(this) {
 __3. Context 为空：__
 
 ```kotlin
-// ❌ 错误：不能使用 Activity Context 在 Application 中初始化
+//  错误：不能使用 Activity Context 在 Application 中初始化
 class MyApplication : Application() {
     override fun onCreate() {
         super.onCreate()
@@ -171,7 +171,7 @@ class MyApplication : Application() {
 }
 ```
 
-### 检查初始化状态
+## 检查初始化状态
 
 ```kotlin
 // 检查是否已初始化
@@ -189,7 +189,7 @@ println("SDK 状态: $stats")
 // 输出: {initialized=true, debug_mode=true, cache_directory=..., thread_pool_stats=...}
 ```
 
-### 资源清理
+## 资源清理
 
 ```kotlin
 // 在应用退出时销毁 SDK（可选）
@@ -200,7 +200,7 @@ override fun onTerminate() {
 ```
 
 
-### 小结
+## 小结
 本章详细介绍了 Andas SDK 的初始化流程和配置方法。关键要点：
 
 1. __初始化时机__: 推荐在 Application.onCreate() 中完成

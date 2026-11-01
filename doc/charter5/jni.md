@@ -1,18 +1,18 @@
-## 第五章：JNI 原生 API
+# 第五章：JNI 原生 API
 
-### 5.1 JNI 原生概述
+## 5.1 JNI 原生概述
 
 Andas SDK 通过 JNI (Java Native Interface) 技术集成了 C++ 原生代码，提供了高性能的数学运算和数据处理能力。本章介绍如何使用原生 API 进行高效的数值计算。
 
 **核心特性：**
-- ⚡ 高性能计算：C++ 原生代码执行
-- 📊 数学运算：丰富的统计和数学函数
-- 🔧 数组处理：高效的数组操作
-- 🛡️ 线程安全：支持并发访问
+- 高性能计算：C++ 原生代码执行
+- 数学运算：丰富的统计和数学函数
+- 数组处理：高效的数组操作
+- 线程安全：支持并发访问
 
-### 5.2 原生数学运算
+## 5.2 原生数学运算
 
-#### 5.2.1 数组求和
+### 5.2.1 数组求和
 
 ```kotlin
 import cn.ac.oac.libs.andas.core.NativeMath
@@ -36,7 +36,7 @@ println("平均值: $mean")
 平均值: 5000.5
 ```
 
-#### 5.2.2 原生统计计算
+### 5.2.2 原生统计计算
 
 ```kotlin
 val data = (1..1000).map { it * 1.0 }.toDoubleArray()
@@ -69,9 +69,9 @@ println("加倍前5: ${doubled.take(5)}")
 // 输出: [2.0, 4.0, 6.0, 8.0, 10.0]
 ```
 
-### 5.3 与 Series 的集成
+## 5.3 与 Series 的集成
 
-#### 5.3.1 Series 原生方法
+### 5.3.1 Series 原生方法
 
 ```kotlin
 val series = Andas.getInstance().createSeries(
@@ -95,7 +95,7 @@ println("  方差: $variance")
 println("  标准差: $std")
 ```
 
-#### 5.3.2 DataFrame 原生统计
+### 5.3.2 DataFrame 原生统计
 
 ```kotlin
 val df = Andas.getInstance().createDataFrame(
@@ -116,9 +116,9 @@ println("英语平均值: $englishMean")
 println("物理最大值: $physicsMax")
 ```
 
-### 5.4 性能对比
+## 5.4 性能对比
 
-#### 5.4.1 JNI vs Kotlin 性能对比
+### 5.4.1 JNI vs Kotlin 性能对比
 
 ```kotlin
 val data = (1..100000).map { it.toDouble() }
@@ -148,9 +148,9 @@ JNI 求和: 1ms (结果: 5000050000.0)
 性能加速比: 8.00x
 ```
 
-### 5.5 原生数据处理
+## 5.5 原生数据处理
 
-#### 5.5.1 数据变换
+### 5.5.1 数据变换
 
 ```kotlin
 // 归一化
@@ -167,7 +167,7 @@ val cumsum = NativeMath.cumsumArray(data)
 println("累计求和: ${cumsum.take(5)}")
 ```
 
-#### 5.5.2 Series 原生变换
+### 5.5.2 Series 原生变换
 
 ```kotlin
 val series = Andas.getInstance().createSeries(
@@ -187,23 +187,23 @@ val filtered = series.filterGreaterThan(50.0)
 println("大于50的元素: ${filtered.head()}")
 ```
 
-### 5.6 高性能计算最佳实践
+## 5.6 高性能计算最佳实践
 
-#### 5.6.1 选择合适的原生方法
+### 5.6.1 选择合适的原生方法
 
 ```kotlin
-// ✅ 推荐：对于大数据集使用原生方法
+//  推荐：对于大数据集使用原生方法
 val largeData = (1..1000000).map { it.toDouble() }
 val sum = NativeMath.sumDoubleArray(largeData.toDoubleArray())  // 快速
 
-// ❌ 避免：手动实现统计函数
+//  避免：手动实现统计函数
 val slowSum = largeData.sum()  // 相对较慢
 ```
 
-#### 5.6.2 批量处理优化
+### 5.6.2 批量处理优化
 
 ```kotlin
-// ✅ 推荐：使用原生方法进行批量处理
+//  推荐：使用原生方法进行批量处理
 val series = Andas.getInstance().createSeries(
     (1..100000).map { it * 1.1 }
 )
@@ -220,9 +220,9 @@ val stats = mapOf(
 println("批量统计: $stats")
 ```
 
-### 5.7 调试和监控
+## 5.7 调试和监控
 
-#### 5.7.1 性能监控
+### 5.7.1 性能监控
 
 ```kotlin
 // 开启调试模式
@@ -243,7 +243,7 @@ val sum = NativeMath.sumDoubleArray(data)
 // [Andas-DEBUG] Native operation completed in 0.5ms
 ```
 
-### 5.8 小结
+## 5.8 小结
 
 本章介绍了 Andas SDK 的 JNI 原生 API，包括：
 

@@ -3,44 +3,54 @@
 ## 1. 环境准备
 
 ### 系统要求
-- Android Studio Arctic Fox 或更高版本
-- Android SDK API 21+
-- NDK 21+
-- Kotlin 1.8+
+- Android Studio Ladybug 或更高版本
+- Android SDK API 26+
+- Kotlin 2.0+
+- Gradle 8.13+（使用仓库自带 Wrapper）
 
 ### 项目配置
 
-#### 1.1 添加模块依赖
+#### 1.1 从 JitPack 依赖（推荐）
 
-在 `settings.gradle.kts` 中确保包含 android-pandas 模块：
+在项目级 `settings.gradle.kts` 中添加仓库：
 
 ```kotlin
-include(":app")
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+        maven { url = uri("https://jitpack.io") }
+    }
+}
 ```
-
-#### 1.2 添加模块依赖
 
 在 `app/build.gradle.kts` 中添加依赖：
 
 ```kotlin
 dependencies {
-    implementation(project(":android-pandas"))
-    
-    // Compose 依赖（如果使用）
-    implementation("androidx.activity:activity-compose:1.8.0")
-    implementation(platform("androidx.compose:compose-bom:2023.10.01"))
-    implementation("androidx.compose.ui:ui")
-    implementation("androidx.compose.material3:material3")
+    implementation("com.github.trueWangSyutung:Andas:0.1.5")
 }
 ```
 
-#### 1.3 配置 NDK
+#### 1.2 从源码构建（可选）
 
-在 `local.properties` 中确保 NDK 路径正确：
+克隆仓库后，在 `settings.gradle.kts` 中引入模块：
 
-```properties
-ndk.dir=/path/to/ndk
+```kotlin
+include(":app")
+include(":android-pandas")
 ```
+
+并在 `app/build.gradle.kts` 中使用：
+
+```kotlin
+dependencies {
+    implementation(project(":android-pandas"))
+}
+```
+
+从源码构建原生模块需要 NDK 21+；仅通过 JitPack 依赖时无需单独配置 NDK。
 
 ## 2. 初始化 SDK
 
@@ -182,7 +192,8 @@ val df = Andas.getInstance().createDataFrame(
 
 // 筛选年龄大于30的记录
 val filtered = df.filter { row ->
-    (row["age"] as Int) > 30
+    val age = row["age"]?.get(0) as? Int
+    age != null && age > 30
 }
 // 结果: Charlie(35), David(40)
 ```
@@ -418,18 +429,13 @@ private fun processData(
             
             // 2. 过滤数据
             val filtered = df.filter { row ->
-                (row["value"] as Int) > 10000
+                val value = row["value"]?.get(0) as? Int
+                value != null && value > 10000
             }
             onLog("过滤后: ${filtered.shape().first} 行\n")
             
             // 3. 分组聚合
-            val grouped = filtered.groupBy("category").agg(
-                mapOf(
-                    "avg_value" to "mean",
-                    "max_id" to "max",
-                    "count" to "count"
-                )
-            )
+            val grouped = filtered.groupBy("category").mean()
             onLog("分组聚合:\n$grouped\n")
             
             // 4. 使用原生计算
@@ -445,10 +451,7 @@ private fun processData(
             onLog("- 平均值: $mean\n")
             
             // 5. 导出 CSV
-            val csvFile = File(
-                android.content.ContextWrapper(null).cacheDir,
-                "processed_data.csv"
-            )
+            val csvFile = File(cacheDir, "processed_data.csv")
             
             Andas.getInstance().exportCSVAsync(
                 filtered,
@@ -478,25 +481,25 @@ private fun processData(
 ### 9.1 数据量优化
 
 ```kotlin
-// ✅ 推荐：大数据量使用异步
+//  推荐：大数据量使用异步
 Andas.getInstance().readCSVAsync(file) { df ->
     // 处理数据
 }
 
-// ❌ 避免：在主线程处理大数据
+//  避免：在主线程处理大数据
 val df = Andas.getInstance().readCSV(file) // 可能阻塞 UI
 ```
 
 ### 9.2 内存管理
 
 ```kotlin
-// ✅ 及时释放资源
+//  及时释放资源
 override fun onDestroy() {
     super.onDestroy()
     Andas.getInstance().destroy()
 }
 
-// ✅ 复用 DataFrame 对象
+//  复用 DataFrame 对象
 var df: DataFrame? = null
 df = Andas.getInstance().createDataFrame(data)
 // 使用 df
@@ -506,11 +509,11 @@ df = null // 帮助 GC
 ### 9.3 原生加速
 
 ```kotlin
-// ✅ 大数据量使用原生方法
+//  大数据量使用原生方法
 val data = (1..100000).map { it.toDouble() }.toDoubleArray()
 val result = NativeMath.multiplyDoubleArray(data, 2.0)
 
-// ✅ 统计计算使用原生
+//  统计计算使用原生
 val sum = NativeMath.sumDoubleArray(data)
 val mean = NativeMath.meanDoubleArray(data)
 ```
@@ -572,10 +575,10 @@ Andas.initialize(context) { /* 配置 */ }
 
 ## 12. 下一步
 
-- 📖 阅读 [API 参考文档](API_REFERENCE.md) 了解详细 API
-- 🔍 查看 [完整项目文档](README.md) 了解架构设计
-- 🧪 运行 Demo 应用体验所有功能
-- 🚀 开始构建你的数据处理应用！
+- 阅读 [API 参考文档](API_REFERENCE.md) 了解详细 API
+- 查看 [完整项目文档](README.md) 了解架构设计
+- 运行 Demo 应用体验所有功能
+- 开始构建你的数据处理应用！
 
 ---
 

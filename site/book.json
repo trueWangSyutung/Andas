@@ -1,0 +1,67 @@
+{
+  "gitbook": "3.2.2",
+  "title": "Andas SDK 文档",
+  "description": "Android 高性能数据分析库：用户指南、API 参考与技术报告",
+  "author": "Andas Engineering Team",
+  "language": "zh-hans",
+  "root": "./docs",
+  "styles": {
+    "website": "assets/styles/website.css"
+  },
+  "links": {
+    "sidebar": {
+      "GitHub": "https://github.com/trueWangSyutung/Andas",
+      "Release 0.1.5": "https://github.com/trueWangSyutung/Andas/releases/tag/0.1.5"
+    }
+  },
+  "plugins": [
+    "-lunr",
+    "-search",
+    "-highlight",
+    "-livereload",
+    "search-plus@^0.0.11",
+    "prism@^2.1.0",
+    "prism-themes@^0.0.2",
+    "anchors@^0.7.1",
+    "expandable-chapters-small@^0.1.7",
+    "simple-page-toc@^0.1.1",
+    "tbfed-pagefooter@^0.0.1",
+    "github-buttons@2.1.0",
+    "favicon@^0.0.2"
+  ],
+  "pluginsConfig": {
+    "theme-default": {
+      "showLevel": true
+    },
+    "prism": {
+      "css": [
+        "prism-themes/themes/prism-base16-ateliersulphurpool.light.css"
+      ]
+    },
+    "github-buttons": {
+      "repo": "trueWangSyutung/Andas",
+      "types": [
+        "star"
+      ],
+      "size": "small"
+    },
+    "tbfed-pagefooter": {
+      "copyright": "Copyright © 2026 Andas Engineering Team",
+      "modify_label": "最后更新：",
+      "modify_format": "YYYY-MM-DD"
+    },
+    "favicon": {
+      "shortcut": "https://raw.githubusercontent.com/trueWangSyutung/Andas/main/app/src/main/res/mipmap-xxxhdpi/ic_launcher.webp",
+      "bookmark": "https://raw.githubusercontent.com/trueWangSyutung/Andas/main/app/src/main/res/mipmap-xxxhdpi/ic_launcher.webp"
+    },
+    "sharing": {
+      "facebook": false,
+      "twitter": false,
+      "google": false,
+      "weibo": false,
+      "instapaper": false,
+      "vk": false,
+      "all": []
+    }
+  }
+}

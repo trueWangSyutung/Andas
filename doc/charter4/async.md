@@ -1,19 +1,19 @@
-## 第四章：异步操作 API
+# 第四章：异步操作 API
 
-### 4.1 异步操作概述
+## 4.1 异步操作概述
 
 Andas SDK 提供了完整的异步操作支持，通过协程和回调机制，确保在处理大量数据时不会阻塞主线程，提供流畅的用户体验。
 
 **核心特性：**
-- 🚀 非阻塞操作：不阻塞 UI 线程
-- 📊 进度追踪：支持操作进度反馈
-- 🔄 回调机制：成功和失败回调
-- ⚡ 高性能：基于协程的异步处理
-- 🛡️ 错误处理：完整的异常捕获和处理
+- 非阻塞操作：不阻塞 UI 线程
+- 进度追踪：支持操作进度反馈
+- 回调机制：成功和失败回调
+- 高性能：基于协程的异步处理
+- 错误处理：完整的异常捕获和处理
 
-### 4.2 CSV 文件异步操作
+## 4.2 CSV 文件异步操作
 
-#### 4.2.1 异步读取 CSV
+### 4.2.1 异步读取 CSV
 
 ```kotlin
 // 从 Assets 异步读取
@@ -34,7 +34,7 @@ Andas.getInstance().readCSVFromAssetsAsync(
 )
 ```
 
-#### 4.2.2 异步写入 CSV
+### 4.2.2 异步写入 CSV
 
 ```kotlin
 val df = Andas.getInstance().createDataFrame(
@@ -53,9 +53,9 @@ Andas.getInstance().saveToPrivateStorageAsync(
 )
 ```
 
-### 4.3 通用异步执行
+## 4.3 通用异步执行
 
-#### 4.3.1 计算任务异步化
+### 4.3.1 计算任务异步化
 
 ```kotlin
 // 执行耗时计算任务
@@ -76,7 +76,7 @@ Andas.getInstance().executeAsync(
 )
 ```
 
-#### 4.3.2 IO 任务异步化
+### 4.3.2 IO 任务异步化
 
 ```kotlin
 // 执行文件读写任务
@@ -95,9 +95,9 @@ Andas.getInstance().executeIO(
 )
 ```
 
-### 4.4 异步操作最佳实践
+## 4.4 异步操作最佳实践
 
-#### 4.4.1 链式异步操作
+### 4.4.1 链式异步操作
 
 ```kotlin
 // 1. 读取数据
@@ -106,7 +106,7 @@ Andas.getInstance().readCSVFromAssetsAsync(
     onSuccess = { df ->
         // 2. 处理数据
         val processed = df.addColumn("new_col") { row ->
-            row.getInt("value") * 2
+            (row["value"] as? Number)?.toInt()?.times(2) ?: 0
         }
         
         // 3. 保存结果
@@ -126,7 +126,7 @@ Andas.getInstance().readCSVFromAssetsAsync(
 )
 ```
 
-#### 4.4.2 并行异步操作
+### 4.4.2 并行异步操作
 
 ```kotlin
 // 并行处理多个文件
@@ -146,9 +146,9 @@ files.forEach { fileName ->
 }
 ```
 
-### 4.5 错误处理和超时管理
+## 4.5 错误处理和超时管理
 
-#### 4.5.1 完整的错误处理
+### 4.5.1 完整的错误处理
 
 ```kotlin
 Andas.getInstance().readCSVFromAssetsAsync(
@@ -178,7 +178,7 @@ Andas.getInstance().readCSVFromAssetsAsync(
 )
 ```
 
-#### 4.5.2 超时处理
+### 4.5.2 超时处理
 
 ```kotlin
 // SDK 配置中设置超时时间
@@ -204,9 +204,9 @@ Andas.getInstance().readCSVFromAssetsAsync(
 )
 ```
 
-### 4.6 性能优化建议
+## 4.6 性能优化建议
 
-#### 4.6.1 选择合适的异步方法
+### 4.6.1 选择合适的异步方法
 
 ```kotlin
 // CPU 密集型任务：使用 executeAsync
@@ -240,7 +240,7 @@ Andas.getInstance().executeIO(
 )
 ```
 
-#### 4.6.2 内存管理
+### 4.6.2 内存管理
 
 ```kotlin
 // 处理大文件时，考虑分批处理
@@ -267,9 +267,9 @@ Andas.getInstance().readCSVFromAssetsAsync(
 )
 ```
 
-### 4.7 与 UI 的集成
+## 4.7 与 UI 的集成
 
-#### 4.7.1 在 Activity 中使用
+### 4.7.1 在 Activity 中使用
 
 ```kotlin
 class MainActivity : AppCompatActivity() {
@@ -303,7 +303,7 @@ class MainActivity : AppCompatActivity() {
 }
 ```
 
-#### 4.7.2 在 ViewModel 中使用
+### 4.7.2 在 ViewModel 中使用
 
 ```kotlin
 class DataViewModel : ViewModel() {
@@ -336,7 +336,7 @@ sealed class DataState {
 }
 ```
 
-### 4.8 小结
+## 4.8 小结
 
 本章详细介绍了 Andas SDK 的异步操作 API，包括：
 

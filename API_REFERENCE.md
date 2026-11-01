@@ -622,7 +622,7 @@ val filtered = df.filter { row ->
 }
 ```
 
-**注意：** 由于 v0.0.1.rc3 的 API 变更，filter 的参数现在是 `Map<String, Series<Any>?>`，需要通过 `series?.get(0)` 来访问实际值。
+**注意：** 当前 API（0.1.5）中 filter 的参数是 `Map<String, Series<Any>?>`，需要通过 `series?.get(0)` 访问单元格值。
 
 #### sortValues()
 
@@ -1216,16 +1216,32 @@ try {
 
 ## 更新日志
 
+### v0.1.5 (2026-11-01)
+
+**性能与大数据读取**
+
+- 流式列式 CSV 解析：不再把整个文件读入 `List<String>`，20 万行 × 15 列（约 36 MB）
+  可在 256 MB JVM 堆和 192 MB Android 堆完成读取。
+- 原始类型列存储、共享范围索引、惰性标签映射。
+- 统计单次遍历、排序 `O(n log n)`、分组/连接哈希化。
+- 新增 pandas 2.1.0 对比实验与英文技术报告；详见 `BENCHMARK_REPORT.md` 和 `report/`。
+
+**兼容性说明**
+
+- `sortValues` / `filter` / `sample` / `dropna` 保留原索引标签。
+- `variance` / `std` 使用样本标准差（ddof=1）。
+- CSV 仅将双引号视为引号字符；单引号按普通字符处理。
+
 ### v0.0.1.rc3 (2025-12-19)
 
 **重大变更：DataFrame API 统一化**
 
-- 🚀 **API 统一**：`getRow()`, `loc()`, `iloc()`, `operator get()` 返回类型改为 `Map<String, Series<Any>?>`
-- 🚀 **filter 方法更新**：谓词函数参数类型改为 `Map<String, Series<Any>?>`
-- 🚀 **类型安全**：每个单元格封装为单元素 Series 对象
-- 🚀 **空值处理**：更好的 null 值支持和类型推断
-- 🐛 **兼容性修复**：确保 GroupBy 与新 API 兼容
-- 📝 **文档更新**：完整的 API 参考和迁移指南
+- **API 统一**：`getRow()`, `loc()`, `iloc()`, `operator get()` 返回类型改为 `Map<String, Series<Any>?>`
+- **filter 方法更新**：谓词函数参数类型改为 `Map<String, Series<Any>?>`
+- **类型安全**：每个单元格封装为单元素 Series 对象
+- **空值处理**：更好的 null 值支持和类型推断
+- **兼容性修复**：确保 GroupBy 与新 API 兼容
+- **文档更新**：完整的 API 参考和迁移指南
 
 **迁移示例：**
 ```kotlin
@@ -1240,8 +1256,8 @@ val age = row["age"]?.get(0)  // Any?，通过 Series 访问
 
 ### v0.0.1.rc1 (2025-12-19)
 
-- ✨ 初始版本发布
-- ✨ 支持 Series 和 DataFrame
-- ✨ 支持异步操作
-- ✨ 支持 JNI 原生加速
-- ✨ 支持线程池管理
+- 初始版本发布
+- 支持 Series 和 DataFrame
+- 支持异步操作
+- 支持 JNI 原生加速
+- 支持线程池管理
