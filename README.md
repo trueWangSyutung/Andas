@@ -3,9 +3,6 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Kotlin](https://img.shields.io/badge/Kotlin-1.8+-orange.svg)](https://kotlinlang.org/)
 [![Android](https://img.shields.io/badge/Android-26+-green.svg)](https://developer.android.com/)
-
-> **⚠️ 重要提示**: 本项目代码由 AI 辅助完成，目前处于测试阶段，欢迎测试和反馈！
-
 [![](https://jitpack.io/v/trueWangSyutung/Andas.svg)](https://jitpack.io/#trueWangSyutung/Andas)
 
 ## 项目简介
