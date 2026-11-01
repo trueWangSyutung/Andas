@@ -70,7 +70,9 @@ fails with an out-of-memory error at the same size.  On the Android emulator, th
 statistical, sorting, and join operations improve by 7--33$\times$ over the baseline; filtering and
 grouped aggregation improve by 2.9$\times$ and 1.4$\times$, respectively.  Compared with pandas, the
 optimized reader is still 3.2--6.0$\times$ slower on the desktop JVM but uses less memory, while
-computation kernels remain 6--20$\times$ slower, pointing to native columnar kernels as future work.
+computation kernels remain 6--20$\times$ slower, pointing to native columnar kernels as future work.  A 35-metric cross-language consistency
+check (pandas vs JVM vs Android) passes on both runtimes with a maximum relative error of
+$3.17\times10^{-15}$.
 \end{abstract}
 
 \noindent\textbf{Keywords:} Android, CSV parsing, columnar storage, JVM performance, pandas, data analysis.
@@ -464,6 +466,43 @@ it uses less memory.  Computation kernels remain 6--20$\times$ slower than panda
 \code{describe}, which is slightly faster because pandas constructs several statistics and wraps
 them in a Series.
 
+\subsection{Cross-language consistency}
+
+Performance is necessary but not sufficient: the same input must produce the same answer in
+pandas, on the JVM, and on Android.  We extracted the first 5000 rows of the 50k dataset and
+generated reference metrics with pandas 2.1.0.  The JVM harness and the Android instrumentation
+test read the identical CSV (the Android copy is packaged as a test asset) and compute the same
+35 metrics: cardinalities, `sum`/`mean`/`std`/`min`/`max`/`describe`, sort endpoints,
+filter and group-by sums, join cardinality and amount, Pearson correlation, and normalized
+endpoints.  Integer metrics must match exactly; floating-point metrics use a relative tolerance of
+$10^{-10}$.
+
+\begin{table}[t]
+\centering
+\footnotesize
+\caption{Representative consistency metrics (pandas 2.1.0 vs JVM/Android).}
+\label{tab:consistency}
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+Metric & pandas & JVM & Android \\
+\midrule
+\code{sum(d10)} & -7465.802624422415 & -7465.802624422438 & -7465.802624422438 \\
+\code{std(d10)} & 57.606263335764076 & 57.60626333576399 & 57.60626333576399 \\
+sort first value & -99.94711091909323 & -99.94711091909323 & -99.94711091909323 \\
+filter count & 222 & 222 & 222 \\
+\code{groupby cat\_3} & -2092.5884491227703 & -2092.588449122769 & -2092.588449122769 \\
+merge rows & 5000 & 5000 & 5000 \\
+\code{corr(d10,d11)} & 0.008147698079084498 & 0.008147698079084522 & 0.008147698079084522 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+All 35 metrics pass on both the JVM and Android.  The maximum relative error is
+$3.17\times10^{-15}$, well below the $10^{-10}$ threshold; integer counts and sort endpoints match
+exactly.  The residual difference is explained by floating-point summation order (NumPy pairwise
+summation versus sequential accumulation), not by a semantic difference.  The full table is
+provided in \path{bench/results/consistency_summary.csv}.
+
 \subsection{Android emulator}
 
 Table~\ref{tab:android} and Figure~\ref{fig:android} report the Android experiment.  The CSV is
@@ -577,8 +616,9 @@ storage, and algorithmic rewrites raise the readable size to 200k rows with 35\,
 on Android, and to 200k rows with 56\,MB on a 256\,MB JVM heap.  At 50k rows, statistical and
 sorting kernels improve by 7--33$\times$ and hash joins by 30.9$\times$.  pandas remains faster on
 the desktop because of its C/NumPy engine, but the optimized library narrows the read gap and uses
-less memory.  The remaining 6--20$\times$ kernel gap motivates native columnar kernels and
-zero-copy buffers as future work.
+less memory.  A 35-metric cross-language consistency check against pandas passes on both the JVM
+and Android with a maximum relative error of $3.17\times10^{-15}$.  The remaining 6--20$\times$
+kernel gap motivates native columnar kernels and zero-copy buffers as future work.
 
 \appendix
 \section{Reproducibility}

@@ -22,6 +22,8 @@ Andas 是一个面向 Android 的类 pandas 数据处理库。旧版本在读取
 - 基线排序按字符串字典序进行且为 `O(n²)`，优化后按数值排序并保持 `O(n log n)`。
 - 与 pandas 2.1.0 在同机同数据上对比：优化后读取仍慢 3.2–6.0×，但 GC 后内存低
   1.7–3.9×；计算操作慢 6–20×（`describe` 基本持平），C/NumPy 引擎仍是当前实现的上界。
+- 一致性：在 5k 行 × 15 列的同一份数据上，JVM 与 Android 的 35 项指标（统计、排序、
+  筛选、分组、连接、相关系数、归一化）相对 pandas 的最大误差为 **3.17×10⁻¹⁵**，35/35 通过。
 
 ## 1. 问题与贡献
 
@@ -44,7 +46,8 @@ Andas 是一个面向 Android 的类 pandas 数据处理库。旧版本在读取
 - 引入 `RangeIndexList` 共享范围索引和惰性 `label → position` 映射，使每列索引开销从
   `O(n)` 内存降为 `O(1)`。
 - 将统计、排序、筛选、分组、连接改为单次遍历或哈希算法，并启用 OpenMP 原生并行。
-- 在 JVM 与 Android 模拟器上完成可复现实验，给出时间、内存和 OOM 阈值数据。
+- 在 JVM 与 Android 模拟器上完成可复现实验，给出时间、内存和 OOM 阈值数据；
+- 建立 Python pandas ↔ JVM ↔ Android 的跨语言一致性测试，逐项校验 35 个指标。
 
 ## 2. 实现概述
 
@@ -268,6 +271,43 @@ logcat 标签为 `ANDAS_BENCH`。
 这直接对应了“旧版本大文件无法读取”的问题：旧实现的全量行对象在移动端堆限制下很快耗尽，
 新实现的内存占用由列式数组和字符串决定，不再随“行 Map/Entry”膨胀。
 
+### 4.5 跨语言一致性验证
+
+性能数据之外，还需要验证 Andas 与 pandas 在相同输入上得到相同结果。我们取
+`bench_50000_c15.csv` 的前 5000 行作为一致性数据集，分别用 pandas 2.1.0、JVM 上的 Andas
+和 Android 模拟器上的 Andas 计算同一组指标：
+
+- 基数与计数：行数、列数、筛选行数、分组数、连接行数（要求精确相等）；
+- 统计量：`sum`、`mean`、`std`（ddof=1）、`min`、`max`、`describe`、长整型均值；
+- 排序：首/末值、前 50/后 50 个值的和；
+- 筛选：`double_col_10 > 90` 的行数与和；
+- 分组：10 个类别的 `groupby_sum`；
+- 连接：5k × 5k 的 `merge` 行数与 `amount` 总和；
+- 相关系数与归一化：`corr(double_col_10, double_col_11)`、`normalize` 首/末值。
+
+pandas 生成期望 JSON；JVM 使用 `bench/java/Consistency.java`，Android 使用
+`ConsistencyInstrumentedTest` 读取随测试 APK 打包的同一份 CSV 和期望 JSON。浮点指标采用
+相对误差 `≤ 1e-10`，整数指标要求精确相等。
+
+| 指标 | pandas | JVM | Android |
+| --- | ---: | ---: | ---: |
+| `sum(double_col_10)` | -7465.802624422415 | -7465.802624422438 | -7465.802624422438 |
+| `std(double_col_10)` | 57.606263335764076 | 57.60626333576399 | 57.60626333576399 |
+| `sortValues` 首值 | -99.94711091909323 | -99.94711091909323 | -99.94711091909323 |
+| `filterGreaterThan` 行数 | 222 | 222 | 222 |
+| `groupby_sum[cat_3]` | -2092.5884491227703 | -2092.588449122769 | -2092.588449122769 |
+| `merge` 行数 | 5000 | 5000 | 5000 |
+| `corr(double_10, double_11)` | 0.008147698079084498 | 0.008147698079084522 | 0.008147698079084522 |
+| `normalize` 首值 | -1.5682160419011852 | -1.568216041901185 | -1.568216041901185 |
+
+**结果：35/35 项通过；JVM 与 Android 的最大相对误差均为 3.17×10⁻¹⁵，远低于 1e-10 阈值；
+计数、行数、排序首末值等整数/边界指标完全一致。** 差异仅来自浮点求和顺序
+（pandas/NumPy 的成对求和 vs Andas 的顺序累加），不构成算法或语义差异。
+
+完整逐项结果见 [consistency_summary.csv](bench/results/consistency_summary.csv)，期望值见
+[consistency_pandas.json](bench/results/consistency_pandas.json)，Android 原始输出见
+[android_consistency.log](bench/results/android_consistency.log)。
+
 ## 5. 讨论
 
 ### 5.1 内存复杂度
@@ -346,6 +386,13 @@ python3 bench/run_benchmarks.py
 python3 bench/run_pandas_benchmarks.py
 python3 bench/compare_pandas.py
 
+# 3c) 跨语言一致性（pandas ↔ JVM ↔ Android）
+python3 bench/make_consistency_data.py
+python3 bench/consistency_pandas.py
+# 运行 JVM Consistency harness，输出到 bench/results/consistency_jvm.json
+# 运行 Android ConsistencyInstrumentedTest，并保存 logcat 到 android_consistency.log
+python3 bench/consistency_compare.py
+
 # 4) 图表
 python3 bench/plot_results.py
 
@@ -367,6 +414,8 @@ adb logcat -d -s ANDAS_BENCH:I
 | `bench/results/operations.csv` | 50k 操作表 |
 | `bench/results/android_new.log` / `android_baseline.log` | Android logcat 原始输出 |
 | `bench/results/pandas_summary.csv` / `pandas_comparison.csv` | pandas 对比结果 |
+| `bench/results/consistency_summary.csv` / `consistency_summary.json` | 一致性逐项结果 |
+| `bench/results/consistency_pandas.json` / `consistency_jvm.json` / `android_consistency.log` | 三端原始结果 |
 | `bench/results/fig_*.png` | 论文图表 |
 | `bench/java/Bench.java` | 独立 JVM harness |
 | `android-pandas/src/androidTest/.../CsvBenchInstrumentedTest.kt` | Android 读取实验 |

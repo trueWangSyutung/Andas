@@ -90,6 +90,15 @@ def sync_benchmark() -> None:
     for csv in (ROOT / "bench/results").glob("*.csv"):
         copy(csv, DATA / csv.name)
     copy(ROOT / "bench/results/raw.json", DATA / "raw.json")
+    for name in [
+        "consistency_pandas.json",
+        "consistency_jvm.json",
+        "consistency_summary.json",
+        "android_consistency.log",
+    ]:
+        source = ROOT / "bench/results" / name
+        if source.exists():
+            copy(source, DATA / name)
     copy(ROOT / "bench/results/android_new.log", DATA / "android_new.log")
     copy(ROOT / "bench/results/android_baseline.log", DATA / "android_baseline.log")
 

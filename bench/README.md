@@ -105,7 +105,43 @@ adb logcat -d -s ANDAS_BENCH:I
 基线的 Android 数据：把同一个测试文件复制到 `.baseline/android-pandas/src/androidTest/`
 后，在 `.baseline/` 目录执行同样的 Gradle 命令。
 
-## 10. 结果与注意事项
+## 10. 一致性测试（pandas ↔ JVM ↔ Android）
+
+一致性数据集为 `bench/data/consistency_5000_c15.csv`（从 50k 数据集截取前 5000 行），
+并作为 `androidTest` asset 打包，保证三端读取完全相同的字节。
+
+```bash
+python3 bench/make_consistency_data.py      # 生成 5k 数据与 Android assets
+python3 bench/consistency_pandas.py         # pandas 期望值 JSON
+
+# JVM：先设置 KOTLIN_STDLIB 指向 kotlin-stdlib-2.0.21.jar
+KOTLIN_STDLIB=/path/to/kotlin-stdlib-2.0.21.jar
+javac -encoding UTF-8 -cp "android-pandas/build/tmp/kotlin-classes/debug:$KOTLIN_STDLIB" \
+  -d bench/classes/consistency bench/java/Consistency.java
+java -cp "bench/classes/consistency:android-pandas/build/tmp/kotlin-classes/debug:$KOTLIN_STDLIB" \
+  Consistency bench/data/consistency_5000_c15.csv \
+  bench/data/join_left_5000.csv bench/data/join_right_5000.csv \
+  > bench/results/consistency_jvm.json
+
+# Android：运行 instrumentation test 并抓取 logcat
+adb logcat -c
+./gradlew :android-pandas:connectedDebugAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.class=cn.ac.oac.libs.andas.ConsistencyInstrumentedTest
+adb logcat -d -s ANDAS_CONSISTENCY:I > bench/results/android_consistency.log
+
+python3 bench/consistency_compare.py
+```
+
+比较 35 项指标：行数/列数/计数等整数要求精确相等，浮点指标采用相对误差 `≤ 1e-10`。
+输出：
+
+- `bench/results/consistency_summary.csv`：逐项 pandas/JVM/Android 与误差；
+- `bench/results/consistency_summary.json`：通过率与最大误差；
+- `bench/results/android_consistency.log`：Android 原始 JSON。
+
+当前结果：JVM 与 Android 均 35/35 通过，最大相对误差 `3.17e-15`。
+
+## 11. 结果与注意事项
 
 完整中文报告见 [BENCHMARK_REPORT.md](../BENCHMARK_REPORT.md)，英文 PDF 见
 [report/andas-technical-report.pdf](../report/andas-technical-report.pdf)。

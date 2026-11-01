@@ -82,6 +82,30 @@ pandas runs on CPython with a C parser and NumPy arrays; Andas runs on the JVM/A
 figures are a GC-retained heap for Andas and an RSS increment for pandas, so the comparison is an
 order-of-magnitude reference rather than a claim that one library is universally faster.
 
+### Cross-language consistency
+
+Performance alone is not sufficient: the same input must produce the same answer in pandas,
+on the JVM, and on Android. We extracted the first 5000 rows of the 50k dataset, generated
+reference metrics with pandas 2.1.0, and compared them with the JVM harness and an Android
+instrumentation test. Integer metrics (row/column counts, filter/group/merge counts) must match
+exactly; floating-point metrics use a relative tolerance of 1e-10.
+
+| Metric | pandas | JVM | Android |
+| --- | ---: | ---: | ---: |
+| `sum(double_col_10)` | -7465.802624422415 | -7465.802624422438 | -7465.802624422438 |
+| `std(double_col_10)` | 57.606263335764076 | 57.60626333576399 | 57.60626333576399 |
+| `sortValues` first | -99.94711091909323 | -99.94711091909323 | -99.94711091909323 |
+| `filterGreaterThan` count | 222 | 222 | 222 |
+| `groupby_sum[cat_3]` | -2092.5884491227703 | -2092.588449122769 | -2092.588449122769 |
+| `merge` rows | 5000 | 5000 | 5000 |
+| `corr(double_10, double_11)` | 0.008147698079084498 | 0.008147698079084522 | 0.008147698079084522 |
+
+**Result: 35/35 metrics pass on both the JVM and Android; the maximum relative error is
+3.17e-15**, well below the 1e-10 threshold. The remaining difference comes from floating-point
+summation order (NumPy pairwise summation vs sequential accumulation), not from a semantic
+difference. The full table is in
+[`consistency_summary.csv`](../assets/data/consistency_summary.csv).
+
 ### Android emulator (API 36 ARM64, 192 MB heap)
 
 | Rows | Baseline | Optimized | Baseline heap | Optimized heap |
