@@ -1,8 +1,8 @@
-# Andas 0.1.2 性能与部署更新
+# Andas 0.1.5 性能与部署更新
 
 ## 发布日期
 
-2026 年 11 月
+2026 年 11 月 1 日
 
 ## 一、CSV 读取重构（解决大文件无法读取）
 
@@ -50,7 +50,7 @@
   保证返回索引升序、行不错位。
 - `NativeMath.isAvailable` / `NativeData.isAvailable` 捕获 `Throwable`，JVM 单测可安全降级。
 
-## 四、实测数据
+## 四、实测数据（含 pandas 对比）
 
 测试环境：macOS + JDK 21，`largest.csv`（37 MB，200000 行 × 15 列），
 单元测试 JVM 堆上限 **256 MB**：
@@ -62,6 +62,11 @@ largest.csv 分批读取: 200000 行 / 4 批，耗时 2117 ms
 
 旧实现在同样 37 MB 文件上需要先把文件读成 20 万个字符串并构造 20 万个
 15 键 Map，再转置为列，256 MB 堆下无法稳定完成。
+
+与 pandas 2.1.0（CPython 3.10，`read_csv(engine="c")`）同机对比：优化后读取仍慢
+3.2–6.0×，但 GC 后内存更低（200k：56 MB vs 106.8 MB 增量 RSS）；`sum/mean/std`
+慢 8–20×，`describe` 基本持平，排序/筛选/分组/连接慢 6–15×。完整数据见
+`BENCHMARK_REPORT.md` 与 `bench/results/pandas_comparison.csv`。
 
 复现命令：
 

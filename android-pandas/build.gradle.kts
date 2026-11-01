@@ -28,7 +28,7 @@ android {
     }
     
     // 版本配置（在 defaultConfig 外部）
-    version = "0.0.1.rc3"
+    version = "0.1.5"
 
     buildTypes {
         release {

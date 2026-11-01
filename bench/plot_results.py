@@ -267,6 +267,73 @@ def fig_android_memory():
     plt.close(fig)
 
 
+
+PANDAS = "#54A24B"
+
+
+def load_pandas():
+    import csv
+
+    with (RESULTS / "pandas_comparison.csv").open(encoding="utf-8") as handle:
+        return list(csv.DictReader(handle))
+
+
+def fig_read_time_pandas():
+    setup()
+    rows = load_pandas()
+    reads = [r for r in rows if r["kind"] == "read"]
+    fig, ax = plt.subplots(figsize=(5.4, 3.5))
+    for key, color, label, marker in [
+        ("baseline_ms", BASELINE, "Baseline", "o"),
+        ("optimized_ms", NEW, "Optimized", "o"),
+        ("pandas_ms", PANDAS, "pandas 2.1.0", "s"),
+    ]:
+        points = [(int(r["rows"]) / 1000, float(r[key])) for r in reads if r[key]]
+        ax.plot([p[0] for p in points], [p[1] for p in points],
+                marker=marker, markersize=4, linewidth=1.8, color=color, label=label)
+    oom = [r for r in reads if not r["baseline_ms"]]
+    for row in oom:
+        x = int(row["rows"]) / 1000
+        ax.axvline(x, color=BASELINE, linestyle=":", linewidth=1)
+        ax.text(x - 3, 700, "Baseline OOM", color=BASELINE, fontsize=7, ha="right")
+    ax.set_xlabel("Rows (thousands, 15 columns)")
+    ax.set_ylabel("CSV read time (ms)")
+    ax.set_title("JVM vs pandas (desktop, same machine/data)")
+    ax.legend(frameon=False, fontsize=7.5)
+    fig.tight_layout()
+    fig.savefig(RESULTS / "fig_read_time_pandas.png")
+    plt.close(fig)
+
+
+def fig_ops_pandas():
+    setup()
+    rows = [r for r in load_pandas() if r["kind"] not in ("read",)]
+    order = ["sum", "mean", "std", "describe", "sort", "filter", "groupby", "merge"]
+    labels = {
+        "sum": "sum", "mean": "mean", "std": "std", "describe": "describe",
+        "sort": "sort", "filter": "filter", "groupby": "groupBy", "merge": "merge",
+    }
+    rows = sorted(rows, key=lambda r: order.index(r["kind"]))
+    fig, ax = plt.subplots(figsize=(6.8, 3.6))
+    x = list(range(len(rows)))
+    width = 0.26
+    ax.bar([i - width for i in x], [float(r["baseline_ms"]) for r in rows],
+           width, color=BASELINE, label="Baseline")
+    ax.bar(x, [float(r["optimized_ms"]) for r in rows],
+           width, color=NEW, label="Optimized")
+    ax.bar([i + width for i in x], [float(r["pandas_ms"]) for r in rows],
+           width, color=PANDAS, label="pandas 2.1.0")
+    ax.set_yscale("log")
+    ax.set_ylabel("Operation time (ms, log scale)")
+    ax.set_xticks(x)
+    ax.set_xticklabels([labels[r["kind"]] for r in rows], rotation=20, ha="right")
+    ax.legend(frameon=False, fontsize=8)
+    ax.set_title("50k rows / 15 columns (merge: 5k x 5k)")
+    fig.tight_layout()
+    fig.savefig(RESULTS / "fig_ops_pandas.png")
+    plt.close(fig)
+
+
 def main():
     rows = load()
     fig_read_time(rows)
@@ -275,6 +342,8 @@ def main():
     fig_speedup(rows)
     fig_android()
     fig_android_memory()
+    fig_read_time_pandas()
+    fig_ops_pandas()
     print("figures written to", RESULTS)
 
 

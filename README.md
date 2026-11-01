@@ -13,7 +13,7 @@
 Andas SDK (Android Data Analysis System) 是一个专为 Android 平台设计的高性能数据处理库，灵感来源于 Python 的 pandas 库。通过 JNI 技术集成 C++ 原生代码和 OpenMP 并行计算，实现了显著的性能提升。
 
 ## 📋 版本信息
-**当前版本**: `0.0.1.rc6` (2025-12-19)  
+**当前版本**: `0.1.5` (2026-11-01)  
 
 ### 核心特性
 
@@ -26,11 +26,11 @@ Andas SDK (Android Data Analysis System) 是一个专为 Android 平台设计的
 
 > 文档站点（GitHub Pages 默认域名）：<https://truewangsyutung.github.io/Andas/>
 
-### 最新性能优化（0.1.2）
+### 最新性能优化（0.1.5）
 
 CSV 读取已从“整文件读入 → 每行 Map → 转置”重构为**流式列式解析**，
 统计、排序、筛选、分组、连接等操作也改为单次遍历或哈希算法。
-详见 [CHANGELOG_0.1.2.md](CHANGELOG_0.1.2.md)；
+详见 [CHANGELOG_0.1.5.md](CHANGELOG_0.1.5.md)；
 完整的实验数据、图表与复现脚本见 [BENCHMARK_REPORT.md](BENCHMARK_REPORT.md) 和 [bench/README.md](bench/README.md)。
 
 ## 快速开始
@@ -52,7 +52,7 @@ dependencyResolutionManagement {
 
 ```kotlin
 dependencies {
-    implementation("com.github.trueWangSyutung:Andas:0.0.1.rc1")
+    implementation("com.github.trueWangSyutung:Andas:0.1.5")
 }
 ```
 

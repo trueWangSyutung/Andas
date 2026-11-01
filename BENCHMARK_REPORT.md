@@ -20,6 +20,8 @@ Andas 是一个面向 Android 的类 pandas 数据处理库。旧版本在读取
 - 50k 行数据上，`sum`、`mean`、`std`、`describe` 加速 **7–30×**，`sortValues` 加速
   **32.9×**，5k × 5k `merge` 加速 **30.9×**，`filterGreaterThan` 加速 **2.9×**。
 - 基线排序按字符串字典序进行且为 `O(n²)`，优化后按数值排序并保持 `O(n log n)`。
+- 与 pandas 2.1.0 在同机同数据上对比：优化后读取仍慢 3.2–6.0×，但 GC 后内存低
+  1.7–3.9×；计算操作慢 6–20×（`describe` 基本持平），C/NumPy 引擎仍是当前实现的上界。
 
 ## 1. 问题与贡献
 
@@ -90,6 +92,7 @@ InputStream → BufferedReader(64 KB) → CsvRecordReader（字符级状态机�
 | JDK | OpenJDK 21.0.12（Homebrew） |
 | 构建 | Gradle 8.13，AGP 8.13.2，Kotlin 2.0.21 |
 | Android | API 36 arm64 模拟器（AVD `MullionFold76`），`Runtime.maxMemory()` = 192 MB |
+| Python 对比 | CPython 3.10.11，pandas 2.1.0，NumPy C 引擎（同机、同数据、同磁盘缓存） |
 
 ### 3.2 数据集
 
@@ -178,7 +181,67 @@ InputStream → BufferedReader(64 KB) → CsvRecordReader（字符级状态机�
 过滤空值而出现行错位。优化后用 `StreamingCsvPerformanceTest` 校验了数值单调性、
 分组求和、连接行数、空值填充、相关系数与归一化等。
 
-### 4.3 Android 模拟器
+### 4.3 与 pandas 的对比
+
+pandas 是 Andas 的直接设计参考。为了给出一个“桌面端参考上界”，在同一台机器、同一批 CSV 上
+运行 pandas 2.1.0（`pd.read_csv(..., engine="c")`）。每次测量使用独立的 Python 进程，
+先读取 10k 文件预热 C 解析器，再读取目标文件；3 次取中位数。
+
+**读取时间与内存**
+
+| 行数 | 基线 (ms) | 优化后 (ms) | pandas (ms) | 优化后 / pandas | 基线 / pandas |
+|---:|---:|---:|---:|---:|---:|
+| 10k | 321 | 138 | 22.9 | 6.02× 慢 | 14.0× 慢 |
+| 25k | 623 | 244 | 56.4 | 4.32× 慢 | 11.0× 慢 |
+| 50k | 1071 | 541 | 112.8 | 4.80× 慢 | 9.50× 慢 |
+| 100k | 2540 | 964 | 239.6 | 4.02× 慢 | 10.6× 慢 |
+| 200k | **OOM** | 1440 | 446.7 | 3.22× 慢 | OOM |
+
+| 行数 | 基线存活堆 (MB) | 优化后存活堆 (MB) | pandas 读取增量 RSS (MB) |
+|---:|---:|---:|---:|
+| 10k | 15 | 4 | 6.9 |
+| 25k | 36 | 8 | 19.1 |
+| 50k | 78 | 14 | 54.2 |
+| 100k | 155 | 30 | 75.9 |
+| 200k | OOM | 56 | 106.8 |
+
+![JVM、pandas 读取时间对比](bench/results/fig_read_time_pandas.png)
+
+需要注意：pandas 的数值是 **Python 进程增量 RSS**，Andas 的数值是 **GC 后 JVM 存活堆**，
+两者不是同一指标；但可以看出，优化后的列式存储比 pandas 的 object/NumPy 组合更省内存
+（200k 时 56 MB vs 106.8 MB）。
+
+**计算操作（50k 行；merge 为 5k × 5k）**
+
+| 操作 | 基线 (ms) | 优化后 (ms) | pandas (ms) | 优化后 / pandas |
+|---|---:|---:|---:|---:|
+| `sum` | 30 | 1 | 0.12 | 8.3× 慢 |
+| `mean` | 28 | 2 | 0.10 | 20.0× 慢 |
+| `std` | 28 | 4 | 0.37 | 10.8× 慢 |
+| `describe` | 80 | 3 | 3.22 | 0.93×（略快） |
+| `sortValues` | 2629 | 80 | 12.67 | 6.3× 慢 |
+| `filterGreaterThan` | 23 | 8 | 0.55 | 14.5× 慢 |
+| `groupBySum` | 27 | 20 | 1.85 | 10.8× 慢 |
+| `merge` | 557 | 18 | 1.43 | 12.6× 慢 |
+
+![基线、优化后与 pandas 的操作耗时](bench/results/fig_ops_pandas.png)
+
+分析：
+
+1. **读取**：pandas 的 C 解析器 + 连续 NumPy 数组在桌面端明显更快；优化后仍慢 3.2–6.0×，
+   但相比基线的 9.5–14× 差距已缩小一半以上，且内存更低。200k 时基线 OOM，pandas 与优化版
+   都能完成。
+2. **统计**：pandas 的归约由 C/NumPy 完成，`sum/mean/std` 快 8–20×；优化后的单次遍历
+   已把基线 30 ms 级降到 1–4 ms。
+3. **`describe`**：优化后 3 ms，与 pandas 3.22 ms 基本持平甚至略快，因为 pandas 的
+   `describe` 需要构造多个统计量并做 Series 包装。
+4. **排序/筛选/分组/连接**：pandas 仍快 6–15×；差距主要来自 JVM 侧的装箱、`Any?` 动态
+   分发和 JNI/对象边界。这也是后续工作的方向（原生列式内核、零拷贝 JNI、向量化算子）。
+5. **公平性**：pandas 运行在桌面 CPython + C 扩展，Andas 运行在 JVM（以及 Android ART），
+   二者不是同一运行时；本节数据用于给出数量级参考，而不是宣称 Android 库应达到 pandas
+   的绝对性能。
+
+### 4.4 Android 模拟器
 
 Android 端只测 CSV 读取（计算路径在 JVM 中已单独评估，且 Android 上 JNI 会改变绝对值）。
 测试在 192 MB 堆的 API 36 arm64 模拟器上运行，CSV 由测试代码在设备上生成后读取，
@@ -228,11 +291,18 @@ logcat 标签为 `ANDAS_BENCH`。
 
 `groupBySum` 仅 1.4×，因为旧实现已是哈希聚合；这也说明优化集中在真正的瓶颈上。
 
-### 5.3 与 pandas / 其他库的可比性
+### 5.3 与 pandas 的对比解读
 
-本文不直接与 pandas 比较：运行环境（JVM/ART vs CPython）、数据规模与 I/O 缓存不同，
-直接比较绝对值意义有限。本文关注**同一代码库优化前后**的受控对比，以及 Android 堆限制
-下的可用性边界。
+pandas 数据给出了两个有用信号：
+
+1. **上界**：优化后读取仍比 pandas 慢 3.2–6.0×，统计操作慢 8–20×，说明 JVM 侧的动态类型、
+   装箱和 JNI 边界仍有优化空间；但排序/连接的差距已从基线的 200×+ 缩小到 6–13×。
+2. **内存**：优化后的列式存储的 GC 后存活堆低于 pandas 的增量 RSS（200k：56 vs 106.8 MB），
+   说明“列式 + 原始类型”的方向是正确的；pandas 的 object 字符串列和 NumPy 中间数组在
+   读取阶段会带来更高内存。
+
+运行时差异（CPython/C vs JVM/ART）、内存指标差异（RSS vs GC 后堆）意味着这些数字不能
+直接作为“Andas 比 pandas 快/慢”的结论；它们更适合用于定位下一阶段的优化目标。
 
 ## 6. 有效性威胁
 
@@ -247,6 +317,8 @@ logcat 标签为 `ANDAS_BENCH`。
    立即回收，数值存在数 MB 波动。
 5. **单机单次环境**：每档 3 次取中位数，未做跨机器重复；绝对时间会随机器负载变化，
    但相对趋势在多次运行中稳定。
+6. **pandas 对比的运行时差异**：pandas 运行在 CPython 3.10 + C/NumPy，Andas 运行在 JVM/ART；
+   内存指标分别为 RSS 增量与 GC 后堆，不能直接等同。对比仅用于数量级参考和优化目标定位。
 
 ## 7. 结论
 
@@ -254,7 +326,9 @@ logcat 标签为 `ANDAS_BENCH`。
 内存放大和分配抖动；计算瓶颈则主要来自中间集合、`O(n²)` 排序和 `O(nm)` 连接。通过流式
 列式解析、共享范围索引、原始类型数组和哈希/排序算法替换，优化版在 192 MB Android 环境中
 把可读取规模从“10 万行 OOM”提升到“20 万行 35 MB 存活堆”，并在 50k 行数据上取得统计/排序/连接类操作 7–33×、筛选 2.9×、
-分组聚合 1.4× 的加速。相关实现、测试与实验脚本均已随仓库提供，可复现。
+分组聚合 1.4× 的加速。与 pandas 2.1.0 的桌面端对比显示，读取差距由基线的约 10–14× 缩小到
+3.2–6.0×，内存低于 pandas；统计/排序类操作仍有 6–20× 差距，指向原生列式内核这一后续方向。
+相关实现、测试与实验脚本均已随仓库提供，可复现。
 
 ## 附录 A：复现命令
 
@@ -267,6 +341,10 @@ python3 bench/gen_data.py
 
 # 3) JVM 实验（每档 3 次独立 JVM）
 python3 bench/run_benchmarks.py
+
+# 3b) pandas 对比（3 次独立 Python 进程）
+python3 bench/run_pandas_benchmarks.py
+python3 bench/compare_pandas.py
 
 # 4) 图表
 python3 bench/plot_results.py
@@ -288,6 +366,7 @@ adb logcat -d -s ANDAS_BENCH:I
 | `bench/results/read_scaling.csv` | 读取扩展性表 |
 | `bench/results/operations.csv` | 50k 操作表 |
 | `bench/results/android_new.log` / `android_baseline.log` | Android logcat 原始输出 |
+| `bench/results/pandas_summary.csv` / `pandas_comparison.csv` | pandas 对比结果 |
 | `bench/results/fig_*.png` | 论文图表 |
 | `bench/java/Bench.java` | 独立 JVM harness |
 | `android-pandas/src/androidTest/.../CsvBenchInstrumentedTest.kt` | Android 读取实验 |

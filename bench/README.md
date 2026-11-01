@@ -9,6 +9,9 @@ bench/
 ├── gen_data.py                 # 生成 15 列、1w~20w 行的合成 CSV
 ├── prepare_baseline.sh         # 检出优化前版本、编译两套 class 与 Java harness
 ├── run_benchmarks.py           # 运行 JVM 基准矩阵（每档 3 次，取中位数）
+├── pandas_bench.py             # 单次 pandas 测量
+├── run_pandas_benchmarks.py    # 运行 pandas 对比矩阵
+├── compare_pandas.py           # 生成 pandas vs Andas 对比表
 ├── plot_results.py             # 生成论文图表
 ├── java/Bench.java             # 独立 JVM 基准入口（不依赖 JUnit/Android）
 ├── results/                    # raw.json / summary.csv / 图表
@@ -49,6 +52,17 @@ python3 bench/run_benchmarks.py
 - 计算实验：`-Xmx1g`，50k 行，各 3 次；merge 为 5k × 5k；
 - 结果写入 `bench/results/raw.json`、`summary.csv`、
   `read_scaling.csv`、`operations.csv`。
+
+## 3b. pandas 对比
+
+```bash
+python3 bench/run_pandas_benchmarks.py
+python3 bench/compare_pandas.py
+```
+
+pandas 2.1.0 / CPython 3.10，`read_csv(engine="c")`；每次测量使用独立 Python 进程，
+读取 10k 预热后读取目标文件，3 次取中位数。结果写入
+`bench/results/pandas_summary.csv`、`pandas_comparison.csv`。
 
 ## 4. 生成图表
 

@@ -1,0 +1,14 @@
+impl,mode,rows,read_ms,op_ms,peak_mb,used_mb,status,reps
+pandas,describe,50000,104.19,3.22,53.2,53.2,ok,3
+pandas,filter,50000,104.65,0.55,49.6,49.6,ok,3
+pandas,groupby,50000,113.67,1.85,52.8,52.8,ok,3
+pandas,mean,50000,110.17,0.1,50.1,50.1,ok,3
+pandas,merge,5000,1.85,1.43,0.6,0.6,ok,3
+pandas,read,10000,22.91,0.0,6.9,6.9,ok,3
+pandas,read,25000,56.42,0.0,19.1,19.1,ok,3
+pandas,read,50000,112.76,0.0,54.2,54.2,ok,3
+pandas,read,100000,239.63,0.0,75.9,75.9,ok,3
+pandas,read,200000,446.68,0.0,106.8,106.8,ok,3
+pandas,sort,50000,108.73,12.67,57.4,57.4,ok,3
+pandas,std,50000,117.01,0.37,55.2,55.2,ok,3
+pandas,sum,50000,107.63,0.12,52.7,52.7,ok,3
