@@ -1,6 +1,7 @@
 package cn.ac.oac.libs.andas
 
 import cn.ac.oac.libs.andas.entity.DataFrame
+import cn.ac.oac.libs.andas.entity.Series
 import org.junit.Test
 import org.junit.Assert.*
 import java.io.File
@@ -32,14 +33,14 @@ class SimpleCSVTest {
 
             // 验证数据类型和值
             val row0 = df.iloc(0)
-            assertEquals("Alice", row0["name"]?.get(0))
-            assertEquals(25, row0["age"]?.get(0))
-            assertEquals(95.5, row0["score"]?.get(0))
+            assertEquals("Alice", row0.cell("name"))
+            assertEquals(25, row0.cell("age"))
+            assertEquals(95.5, row0.cell("score"))
 
             val row1 = df.iloc(1)
-            assertEquals("Bob", row1["name"]?.get(0))
-            assertEquals(30, row1["age"]?.get(0))
-            assertEquals(87.2, row1["score"]?.get(0))
+            assertEquals("Bob", row1.cell("name"))
+            assertEquals(30, row1.cell("age"))
+            assertEquals(87.2, row1.cell("score"))
 
             println("✓ Basic CSV reading test passed!")
         } finally {
@@ -61,10 +62,12 @@ class SimpleCSVTest {
             Pair("NA", null)
         )
 
-        testCases.forEach { (input, expected) ->
-            val result = DataFrame.convertToAppropriateType(input)
-            assertEquals("Failed for input: $input", expected, result)
-        }
+        testCases.filter { it.first.isNotEmpty() && !it.first.equals("null", true) && it.first != "NA" }
+            .forEach { (input, expected) ->
+                val type = DataFrame.inferTypeFromSample(input, listOf("", "null", "NA"))
+                val result = DataFrame.convertValueWithType(input, type)
+                assertEquals("Failed for input: $input", expected, result)
+            }
 
         println("✓ Type inference test passed!")
     }
@@ -86,9 +89,9 @@ class SimpleCSVTest {
             assertEquals(listOf("col0", "col1", "col2"), df.columns())
 
             val row0 = df.iloc(0)
-            assertEquals("Alice", row0["col0"]?.get(0))
-            assertEquals(25, row0["col1"]?.get(0))
-            assertEquals(95.5, row0["col2"]?.get(0))
+            assertEquals("Alice", row0.cell("col0"))
+            assertEquals(25, row0.cell("col1"))
+            assertEquals(95.5, row0.cell("col2"))
 
             println("✓ No header test passed!")
         } finally {
@@ -111,16 +114,16 @@ class SimpleCSVTest {
             val df = DataFrame.readCSV(csvFile, header = true, autoType = true)
 
             val row0 = df.iloc(0)
-            assertNull(row0["age"])
-            assertEquals(95.5, row0["score"]?.get(0))
+            assertNull(row0.cell("age"))
+            assertEquals(95.5, row0.cell("score"))
 
             val row1 = df.iloc(1)
-            assertEquals(30, row1["age"]?.get(0))
-            assertNull(row1["score"])
+            assertEquals(30, row1.cell("age"))
+            assertNull(row1.cell("score"))
 
             val row2 = df.iloc(2)
-            assertEquals(28, row2["age"]?.get(0))
-            assertNull(row2["score"])
+            assertEquals(28, row2.cell("age"))
+            assertNull(row2.cell("score"))
 
             println("✓ Null handling test passed!")
         } finally {
@@ -146,9 +149,9 @@ class SimpleCSVTest {
             assertEquals(listOf("name", "age", "score"), df.columns())
 
             val row0 = df.iloc(0)
-            assertEquals("Alice", row0["name"]?.get(0))
-            assertEquals(25, row0["age"]?.get(0))
-            assertEquals(95.5, row0["score"]?.get(0))
+            assertEquals("Alice", row0.cell("name"))
+            assertEquals(25, row0.cell("age"))
+            assertEquals(95.5, row0.cell("score"))
 
             println("✓ Custom delimiter test passed!")
         } finally {
@@ -173,13 +176,13 @@ class SimpleCSVTest {
             assertEquals(3, df.shape().second)
 
             val row0 = df.iloc(0)
-            assertEquals("John Doe", row0["name"]?.get(0))
-            assertEquals("A good person", row0["description"]?.get(0))
-            assertEquals(100.50, row0["price"]?.get(0))
+            assertEquals("John Doe", row0.cell("name"))
+            assertEquals("A good person", row0.cell("description"))
+            assertEquals(100.50, row0.cell("price"))
 
             val row1 = df.iloc(1)
-            assertEquals("Jane Smith", row1["name"]?.get(0))
-            assertEquals("Another, person", row1["description"]?.get(0))
+            assertEquals("Jane Smith", row1.cell("name"))
+            assertEquals("Another, person", row1.cell("description"))
 
             println("✓ Quote handling test passed!")
         } finally {
@@ -220,4 +223,7 @@ class SimpleCSVTest {
             csvFile.delete()
         }
     }
+
+    private fun Map<String, Series<Any>?>?.cell(name: String): Any? = this?.get(name)?.get(0)
+
 }

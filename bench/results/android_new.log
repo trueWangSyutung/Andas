@@ -1,0 +1,6 @@
+device=Android SDK built for arm64 sdk=36 maxHeapMb=192
+read rows=10000 ms=1192 retainedMb=1 status=ok shape=(10000, 15)
+read rows=25000 ms=2025 retainedMb=4 status=ok shape=(25000, 15)
+read rows=50000 ms=3468 retainedMb=8 status=ok shape=(50000, 15)
+read rows=100000 ms=7317 retainedMb=18 status=ok shape=(100000, 15)
+read rows=200000 ms=16042 retainedMb=35 status=ok shape=(200000, 15)

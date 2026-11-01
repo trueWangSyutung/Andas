@@ -17,3 +17,12 @@ grad
 PUBLISHING.md
 /.kotlin
 /.idea
+
+# local build cache used by CI/agent
+.gradle-home/
+.baseline/
+bench/data/
+bench/.mpl/
+bench/classes/
+.android-home/
+bench/stdlib.path

@@ -1,0 +1,6 @@
+rows,baseline_ms,optimized_ms,speedup,baseline_retained_mb,optimized_retained_mb,baseline_peak_mb,optimized_peak_mb,baseline_status,optimized_status
+10000,321,138,2.326,15,4,88,41,ok,ok
+25000,623,244,2.553,36,8,137,119,ok,ok
+50000,1071,541,1.98,78,14,165,141,ok,ok
+100000,2540,964,2.635,155,30,245,162,ok,ok
+200000,,1440,,,56,,214,oom,ok

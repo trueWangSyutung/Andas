@@ -75,6 +75,13 @@ android {
     buildFeatures {
         buildConfig = true
     }
+
+    // 单元测试使用受限堆内存，确保流式 CSV 读取不会退化为一次性全量加载
+    testOptions {
+        unitTests.all {
+            it.maxHeapSize = "256m"
+        }
+    }
 }
 
 dependencies {

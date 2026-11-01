@@ -28,11 +28,15 @@ target_link_libraries(
     ${log-lib}
 )
 
-# 设置编译选项 - 移除OpenMP，使用标准C++17并行算法
+# 设置编译选项
 target_compile_options(andas_native PRIVATE -O3 -Wall -Wextra)
 
-# 对于Android，使用C++17的并行执行策略（需要Android NDK 21+）
-# 如果NDK版本较低，会自动回退到串行执行
-set_target_properties(andas_native PROPERTIES
-    LINK_FLAGS "-static-libstdc++"
-)
+# 启用 OpenMP 并行（NDK 21+ 的 libomp）。旧版本 NDK 找不到 OpenMP 时自动回退为串行。
+find_package(OpenMP QUIET)
+if(OpenMP_CXX_FOUND)
+    target_compile_options(andas_native PRIVATE ${OpenMP_CXX_FLAGS})
+    target_link_libraries(andas_native ${OpenMP_CXX_LIBRARIES})
+    message(STATUS "Andas: OpenMP enabled")
+else()
+    message(STATUS "Andas: OpenMP not found, building serially")
+endif()

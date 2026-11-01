@@ -22,27 +22,15 @@ Java_cn_ac_oac_libs_andas_core_NativeData_findNullIndices(
     jdouble* elements = env->GetDoubleArrayElements(array, nullptr);
     
     std::vector<int> nullIndices;
-    
-    // 并行查找空值索引
-    #pragma omp parallel
-    {
-        std::vector<int> local_nullIndices;
-        
-        #pragma omp for nowait
-        for (int i = 0; i < length; i++) {
-            if (std::isnan(elements[i])) {
-                local_nullIndices.push_back(i);
-            }
-        }
-        
-        #pragma omp critical
-        {
-            nullIndices.insert(nullIndices.end(), 
-                               local_nullIndices.begin(), 
-                               local_nullIndices.end());
+    nullIndices.reserve(length);
+
+    // 串行遍历以保证索引顺序（并行 critical 合并会打乱顺序）
+    for (int i = 0; i < length; i++) {
+        if (std::isnan(elements[i])) {
+            nullIndices.push_back(i);
         }
     }
-    
+
     env->ReleaseDoubleArrayElements(array, elements, JNI_ABORT);
     
     jintArray result = env->NewIntArray(nullIndices.size());
@@ -62,27 +50,14 @@ Java_cn_ac_oac_libs_andas_core_NativeData_dropNullValues(
     
     std::vector<double> nonNullValues;
     nonNullValues.reserve(length);
-    
-    // 并行查找非空值
-    #pragma omp parallel
-    {
-        std::vector<double> local_nonNullValues;
-        
-        #pragma omp for nowait
-        for (int i = 0; i < length; i++) {
-            if (!std::isnan(elements[i])) {
-                local_nonNullValues.push_back(elements[i]);
-            }
-        }
-        
-        #pragma omp critical
-        {
-            nonNullValues.insert(nonNullValues.end(), 
-                                 local_nonNullValues.begin(), 
-                                 local_nonNullValues.end());
+
+    // 串行遍历以保证顺序
+    for (int i = 0; i < length; i++) {
+        if (!std::isnan(elements[i])) {
+            nonNullValues.push_back(elements[i]);
         }
     }
-    
+
     env->ReleaseDoubleArrayElements(array, elements, JNI_ABORT);
     
     jdoubleArray result = env->NewDoubleArray(nonNullValues.size());
@@ -206,41 +181,20 @@ Java_cn_ac_oac_libs_andas_core_NativeData_mergeIndices(
     // 使用自定义哈希和相等比较函数的哈希表
     std::unordered_map<double, std::vector<int>, DoubleHash, DoubleEqual> rightValueMap;
 
-    // 构建右侧数组的值到索引列表的映射 - 并行化
-#pragma omp parallel for
     for (int j = 0; j < rightLength; j++) {
-#pragma omp critical
-        {
-            rightValueMap[rightElements[j]].push_back(j);
-        }
+        rightValueMap[rightElements[j]].push_back(j);
     }
 
-    // 预分配结果向量大小，减少内存重新分配
     std::vector<int> mergedIndices;
+    mergedIndices.reserve(leftLength);
 
-    // 并行处理左侧数组
-    #pragma omp parallel
-    {
-        std::vector<int> localMergedIndices;
-        localMergedIndices.reserve(leftLength); // 预估大小
-
-        #pragma omp for nowait
-        for (int i = 0; i < leftLength; i++) {
-            auto it = rightValueMap.find(leftElements[i]);
-            if (it != rightValueMap.end()) {
-                for (int rightIdx : it->second) {
-                    localMergedIndices.push_back(i);
-                    localMergedIndices.push_back(rightIdx);
-                }
+    for (int i = 0; i < leftLength; i++) {
+        auto it = rightValueMap.find(leftElements[i]);
+        if (it != rightValueMap.end()) {
+            for (int rightIdx : it->second) {
+                mergedIndices.push_back(i);
+                mergedIndices.push_back(rightIdx);
             }
-        }
-
-        // 合并本地结果到全局向量
-#pragma omp critical
-        {
-            mergedIndices.insert(mergedIndices.end(),
-                                 localMergedIndices.begin(),
-                                 localMergedIndices.end());
         }
     }
 
@@ -267,27 +221,14 @@ Java_cn_ac_oac_libs_andas_core_NativeData_where(
     
     std::vector<int> indices;
     indices.reserve(length);
-    
-    // 并行查找true值的索引
-    #pragma omp parallel
-    {
-        std::vector<int> local_indices;
-        
-        #pragma omp for nowait
-        for (int i = 0; i < length; i++) {
-            if (maskElements[i]) {
-                local_indices.push_back(i);
-            }
-        }
-        
-        #pragma omp critical
-        {
-            indices.insert(indices.end(), 
-                             local_indices.begin(), 
-                             local_indices.end());
+
+    // 串行遍历以保证索引升序
+    for (int i = 0; i < length; i++) {
+        if (maskElements[i]) {
+            indices.push_back(i);
         }
     }
-    
+
     env->ReleaseBooleanArrayElements(mask, maskElements, JNI_ABORT);
     
     jintArray result = env->NewIntArray(indices.size());

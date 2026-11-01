@@ -1,15 +1,9 @@
 package cn.ac.oac.libs.andas.entity
 
-import android.util.Log
 import cn.ac.oac.libs.andas.types.AndaTypes
 import cn.ac.oac.libs.andas.core.NativeMath
-import cn.ac.oac.libs.andas.core.NativeData
 import cn.ac.oac.libs.andas.core.NativeBatch
 import java.io.File
-import java.io.FileWriter
-import java.io.BufferedReader
-import java.io.InputStreamReader
-import kotlin.collections.sorted
 
 /**
  * DataFrame 类似于二维表格，是Andas库的核心数据结构
@@ -18,8 +12,8 @@ import kotlin.collections.sorted
  * index 通过 data 中的 Series 获取，不单独存储
  */
 class DataFrame {
-    private val data: MutableMap<String, Series<Any>> = mutableMapOf()
-    private var columns: List<String> = listOf()
+    private val data: MutableMap<String, Series<Any>> = LinkedHashMap()
+    private var columns: List<String> = emptyList()
 
     /**
      * 通过列数据构造DataFrame
@@ -28,18 +22,16 @@ class DataFrame {
         if (columnsData.isEmpty()) {
             return
         }
-        
+
         this.columns = columnsData.keys.toList()
-        
+
         // 找到最长列的长度作为索引长度
         val maxSize = columnsData.values.maxOfOrNull { it.size } ?: 0
-        
-        // 创建默认索引 (0 until maxSize)
-        val defaultIndex = (0 until maxSize).toList()
-        
-        // 验证索引类型
+        val defaultIndex = defaultIndexFor(maxSize)
+
+        // 验证索引类型（范围索引无需逐项检查）
         validateIndexType(defaultIndex)
-        
+
         columnsData.forEach { (colName, colData) ->
             // 如果列长度不足，用null填充
             val paddedData = if (colData.size < maxSize) {
@@ -47,10 +39,10 @@ class DataFrame {
             } else {
                 colData
             }
-            data[colName] = Series(paddedData, defaultIndex, colName)
+            data[colName] = Series.wrap(paddedData, defaultIndex, colName)
         }
     }
-    
+
     /**
      * 通过行数据构造DataFrame
      */
@@ -58,28 +50,28 @@ class DataFrame {
         if (rowsData.isEmpty()) {
             return
         }
-        
-        // 提取所有列名
-        val allColumns = mutableSetOf<String>()
-        rowsData.forEach { row ->
-            allColumns.addAll(row.keys)
-        }
-        
+
+        // 提取所有列名（保持首次出现顺序）
+        val allColumns = LinkedHashSet<String>()
+        rowsData.forEach { row -> allColumns.addAll(row.keys) }
         this.columns = allColumns.toList()
-        
-        // 创建默认索引
-        val defaultIndex = rowsData.indices.map { it }
-        
-        // 验证索引类型
-        validateIndexType(defaultIndex)
-        
-        // 转换为列数据
-        columns.forEach { colName ->
-            val colData = rowsData.map { row -> row[colName] }
-            data[colName] = Series(colData, defaultIndex, colName)
+
+        val rowCount = rowsData.size
+        val defaultIndex = defaultIndexFor(rowCount)
+
+        // 一次遍历完成行列转置，避免每列都重新扫描全部行、也避免每行创建 Map
+        val arrays = Array(columns.size) { arrayOfNulls<Any?>(rowCount) }
+        for (r in 0 until rowCount) {
+            val row = rowsData[r]
+            for (c in columns.indices) {
+                arrays[c][r] = row[columns[c]]
+            }
+        }
+        for (c in columns.indices) {
+            data[columns[c]] = Series.wrap(arrays[c].asList(), defaultIndex, columns[c])
         }
     }
-    
+
     /**
      * 私有构造函数 - 用于内部创建DataFrame
      */
@@ -89,19 +81,13 @@ class DataFrame {
     ) {
         this.data.putAll(data)
         this.columns = columns
-        
-        // 验证所有Series的索引类型一致且有效
-        if (data.isNotEmpty()) {
-            val firstSeries = data.values.first()
-            val indexList = firstSeries.index()
-            validateIndexType(indexList)
-        }
     }
-    
+
     /**
      * 验证索引类型：只能是Int或String
      */
     private fun validateIndexType(indexList: List<Any>) {
+        if (indexList is RangeIndexList) return
         for (item in indexList) {
             when (item) {
                 is Int, is String -> continue
@@ -109,6 +95,10 @@ class DataFrame {
             }
         }
     }
+
+    /** 大索引使用 O(1) 内存的虚拟范围索引，避免为每行创建装箱 Int。 */
+    private fun defaultIndexFor(size: Int): List<Any> =
+        if (size > 64) RangeIndexList(size) else (0 until size).toList()
 
     /**
      * 获取索引列表 - 从第一个Series获取
@@ -142,13 +132,7 @@ class DataFrame {
     /**
      * 检查原生库是否可用
      */
-    fun isNativeAvailable(): Boolean {
-        return try {
-            NativeMath.isAvailable() && NativeData.isAvailable()
-        } catch (e: Exception) {
-            false
-        }
-    }
+    fun isNativeAvailable(): Boolean = NativeAvailability.available
     
     /**
      * 性能基准测试
@@ -192,83 +176,50 @@ class DataFrame {
      * 计算 DataFrame 列之间的相关系数矩阵
      */
     fun corr(): DataFrame {
-        if (columns.isEmpty()) {
-            return DataFrame(emptyList<Map<String, Any?>>())
-        }
-        
-        // 只考虑数值类型的列
-        val numericColumns = columns.filter { colName ->
-            val series = data[colName]!!
-            val values = series.values().filterNotNull()
-            values.isEmpty() || values.first() is Number
-        }
-        
+        val numericColumns = columns.filter { data[it]!!.isNumericColumn() }
         if (numericColumns.size < 2) {
             throw IllegalArgumentException("需要至少两个数值列来计算相关系数")
         }
-        
-        // 计算相关系数矩阵
-        val corrData = mutableMapOf<String, List<Double>>()
-        
-        for (col1 in numericColumns) {
-            val rowValues = mutableListOf<Double>()
-            for (col2 in numericColumns) {
-                val corr = calculateCorrelation(col1, col2)
-                rowValues.add(corr)
+
+        val arrays = numericColumns.associateWith { data[it]!!.toDoubleArrayNumeric() }
+        val corrData = LinkedHashMap<String, List<Any?>>(numericColumns.size)
+        for (c1 in numericColumns) {
+            val rowValues = ArrayList<Any?>(numericColumns.size)
+            for (c2 in numericColumns) {
+                rowValues.add(correlation(arrays[c1]!!, arrays[c2]!!))
             }
-            corrData[col1] = rowValues
+            corrData[c1] = rowValues
         }
-        
-        // 创建相关系数矩阵 DataFrame
-        val corrDF = DataFrame(corrData)
-        // 重命名行索引为列名
-        val renamedDF = DataFrame(
-            numericColumns.map { rowName ->
-                numericColumns.mapIndexed { i, colName -> 
-                    colName to corrData[rowName]!![i] 
-                }.toMap()
-            }
-        )
-        
-        return renamedDF
+        return DataFrame(corrData)
     }
-    
-    /**
-     * 计算两列之间的相关系数
-     */
-    private fun calculateCorrelation(col1: String, col2: String): Double {
-        val series1 = data[col1]!!
-        val series2 = data[col2]!!
-        
-        val values1 = series1.values().filterNotNull().map { (it as Number).toDouble() }
-        val values2 = series2.values().filterNotNull().map { (it as Number).toDouble() }
-        
-        if (values1.size != values2.size || values1.isEmpty()) {
-            return Double.NaN
+
+    /** Pearson 相关系数；任一位置为空（NaN）时跳过该行。 */
+    private fun correlation(a: DoubleArray, b: DoubleArray): Double {
+        if (a.size != b.size) return Double.NaN
+        var n = 0L
+        var meanA = 0.0
+        var meanB = 0.0
+        var m2A = 0.0
+        var m2B = 0.0
+        var cov = 0.0
+        for (i in a.indices) {
+            val va = a[i]
+            val vb = b[i]
+            if (va.isNaN() || vb.isNaN()) continue
+            n++
+            val da = va - meanA
+            val db = vb - meanB
+            meanA += da / n
+            meanB += db / n
+            m2A += da * (va - meanA)
+            m2B += db * (vb - meanB)
+            cov += da * (vb - meanB)
         }
-        
-        // 计算皮尔逊相关系数
-        val n = values1.size
-        val mean1 = values1.sum() / n
-        val mean2 = values2.sum() / n
-        
-        var numerator = 0.0
-        var sumSq1 = 0.0
-        var sumSq2 = 0.0
-        
-        for (i in 0 until n) {
-            val diff1 = values1[i] - mean1
-            val diff2 = values2[i] - mean2
-            numerator += diff1 * diff2
-            sumSq1 += diff1 * diff1
-            sumSq2 += diff2 * diff2
-        }
-        
-        val denominator = kotlin.math.sqrt(sumSq1 * sumSq2)
-        
-        return if (denominator == 0.0) 0.0 else numerator / denominator
+        if (n < 2) return Double.NaN
+        val denominator = kotlin.math.sqrt(m2A * m2B)
+        return if (denominator == 0.0) 0.0 else cov / denominator
     }
-    
+
     /**
      * 获取前n行
      */
@@ -387,61 +338,56 @@ class DataFrame {
      * 按条件筛选行
      */
     fun filter(predicate: (Map<String, Series<Any>?>) -> Boolean): DataFrame {
-        val indexList = index()
-        val filteredData = mutableListOf<Map<String, Any?>>()
-        val filteredIndex = mutableListOf<Any>()
-        
-        for (i in indexList.indices) {
-            val row = getRow(i)
-            if (predicate(row)) {
-                // 将 Series<Any> 转换回 Map<String, Any?> 用于创建新 DataFrame
-                val rowValues = row.mapValues { (_, series) -> series?.get(0) }
-                filteredData.add(rowValues)
-                filteredIndex.add(indexList[i])
+        val n = shape().first
+        val positions = ArrayList<Int>()
+        for (i in 0 until n) {
+            if (predicate(RowView(i))) {
+                positions.add(i)
             }
         }
-        
-        // 创建新的DataFrame，需要重新创建Series以使用新的索引
-        if (filteredData.isEmpty()) {
-            return DataFrame(emptyList<Map<String, Any?>>())
-        }
-        
-        val newData = mutableMapOf<String, Series<Any>>()
-        columns.forEach { colName ->
-            val colData = filteredData.map { row -> row[colName] }
-            newData[colName] = Series(colData, filteredIndex, colName)
-        }
-        
-        return DataFrame(newData, columns)
+        return takeRows(positions.toIntArray())
     }
-    
+
+    /**
+     * 行视图：只在访问某列时才创建对应的单元素 Series。
+     * 绝大多数谓词只读取 1~2 列，避免为每一行生成整行 Map 和全部列的 Series。
+     */
+    private inner class RowView(private val rowIndex: Int) : AbstractMap<String, Series<Any>?>() {
+        private val cache = HashMap<String, Series<Any>?>(2)
+
+        override val entries: Set<Map.Entry<String, Series<Any>?>>
+            get() = columns.associateWith { get(it) }.entries
+
+        override val size: Int
+            get() = columns.size
+
+        override fun containsKey(key: String): Boolean = key in columns
+
+        override fun get(key: String): Series<Any>? {
+            if (key !in columns) return null
+            if (cache.containsKey(key)) return cache[key]
+            val value = data[key]!![rowIndex]
+            val series = if (value != null) Series.single(value, key) else null
+            cache[key] = series
+            return series
+        }
+    }
+
     /**
      * 获取指定行 - 返回 Map<String, Series<Any>?>
      */
     fun getRow(rowIndex: Int): Map<String, Series<Any>?> {
-        val indexList = index()
-        if (rowIndex < 0 || rowIndex >= indexList.size) {
+        if (rowIndex < 0 || rowIndex >= shape().first) {
             throw IndexOutOfBoundsException("行索引超出范围: $rowIndex")
         }
-        
-        return columns.associate { colName ->
-            // 为每个单元格创建一个只包含单个元素的 Series
-            val cellValue = data[colName]!![rowIndex]
-            val cellSeries = if (cellValue != null) {
-                Series(listOf(cellValue), listOf(0), colName)
-            } else {
-                null
-            }
-            colName to cellSeries
-        }
+        return RowView(rowIndex)
     }
     
     /**
      * 按标签获取行 - 返回 Map<String, Series<Any>?>
      */
     fun loc(label: Any): Map<String, Series<Any>?> {
-        val indexList = index()
-        val position = indexList.indexOf(label)
+        val position = data.values.firstOrNull()?.positionOf(label) ?: -1
         if (position == -1) {
             throw NoSuchElementException("未找到索引: $label")
         }
@@ -464,89 +410,84 @@ class DataFrame {
      * 按标签获取单元格值
      */
     fun at(label: Any, colName: String): Any? {
-        val indexList = index()
-        val position = indexList.indexOf(label)
+        val series = data[colName] ?: throw IllegalArgumentException("列不存在: $colName")
+        val position = series.positionOf(label)
         if (position == -1) {
             throw NoSuchElementException("未找到索引: $label")
         }
-        return data[colName]?.get(position)
+        return series[position]
     }
     
     /**
      * 检查空值
      */
     fun isnull(): DataFrame {
-        val newData = mutableMapOf<String, Series<Any>>()
         val indexList = index()
+        val n = indexList.size
+        val newData = LinkedHashMap<String, Series<Any>>(columns.size)
         for (colName in columns) {
-            val boolSeries = data[colName]!!.isnull()
-            // 转换为Series<Any>以兼容DataFrame
-            val anySeries = Series(
-                boolSeries.values().map { it as Any? },
-                indexList,
-                boolSeries.name()
-            )
-            newData[colName] = anySeries
+            val series = data[colName]!!
+            val values = BooleanArray(n)
+            for (i in 0 until n) values[i] = series[i] == null
+            newData[colName] = Series.fromBooleanArray(values, null, indexList, colName, AndaTypes.BOOL)
         }
         return DataFrame(newData, columns)
     }
-    
+
     /**
      * 检查非空值
      */
     fun notnull(): DataFrame {
-        val newData = mutableMapOf<String, Series<Any>>()
         val indexList = index()
+        val n = indexList.size
+        val newData = LinkedHashMap<String, Series<Any>>(columns.size)
         for (colName in columns) {
-            val boolSeries = data[colName]!!.notnull()
-            // 转换为Series<Any>以兼容DataFrame
-            val anySeries = Series(
-                boolSeries.values().map { it as Any? },
-                indexList,
-                boolSeries.name()
-            )
-            newData[colName] = anySeries
+            val series = data[colName]!!
+            val values = BooleanArray(n)
+            for (i in 0 until n) values[i] = series[i] != null
+            newData[colName] = Series.fromBooleanArray(values, null, indexList, colName, AndaTypes.BOOL)
         }
         return DataFrame(newData, columns)
     }
-    
+
     /**
      * 丢弃包含空值的行
      */
     fun dropna(): DataFrame {
-        val indexList = index()
-        val rowsToKeep = mutableListOf<Int>()
-        
-        for (i in indexList.indices) {
-            var hasNull = false
+        val n = shape().first
+        val positions = ArrayList<Int>()
+        outer@ for (i in 0 until n) {
             for (colName in columns) {
-                if (data[colName]!![i] == null) {
-                    hasNull = true
-                    break
-                }
+                if (data[colName]!![i] == null) continue@outer
             }
-            if (!hasNull) {
-                rowsToKeep.add(i)
-            }
+            positions.add(i)
         }
-        
-        val filteredData = rowsToKeep.map { i ->
-            columns.associate { colName -> colName to data[colName]!![i] }
-        }
-        
-        return DataFrame(filteredData)
+        return takeRows(positions.toIntArray())
     }
-    
+
     /**
      * 填充空值
      */
     fun fillna(value: Any): DataFrame {
-        val newData = columns.associate { colName ->
-            colName to data[colName]!!.fillna(value)
+        val newData = LinkedHashMap<String, Series<Any>>(columns.size)
+        for (colName in columns) {
+            val series = data[colName]!!
+            if (series.nonNullCount() == series.size()) {
+                newData[colName] = series
+            } else if (value is Number && series.isNumericColumn()) {
+                @Suppress("UNCHECKED_CAST")
+                newData[colName] = series.fillNullWithConstant(value.toDouble()) as Series<Any>
+            } else {
+                val values = ArrayList<Any?>(series.size())
+                for (i in 0 until series.size()) {
+                    values.add(series[i] ?: value)
+                }
+                newData[colName] = Series.wrap(values, index(), colName, series.dtype())
+            }
         }
         return DataFrame(newData, columns)
     }
-    
+
     /**
      * 按列分组
      */
@@ -558,71 +499,50 @@ class DataFrame {
      * 聚合操作
      */
     fun agg(operations: Map<String, String>): DataFrame {
-        val resultData = mutableMapOf<String, List<Any?>>()
-        val resultIndex = mutableListOf<String>()
-        
-        // 执行所有操作
-        operations.forEach { (opName, op) ->
-            resultIndex.add(opName)
-        }
-        
-        columns.forEach { colName ->
+        val resultData = LinkedHashMap<String, List<Any?>>(columns.size)
+        val ops = operations.values.map { it.lowercase() }
+
+        for (colName in columns) {
             val series = data[colName]!!
-            val colResults = mutableListOf<Any?>()
-            
-            operations.forEach { (opName, op) ->
-                val value = when (op.lowercase()) {
-                    "sum" -> {
-                        val values = series.values().filterNotNull()
-                        // 检查是否为数值类型
-                        if (values.isEmpty()) {
-                            null
-                        } else if (values.first() is Number) {
-                            values.sumOf { (it as Number).toDouble() }
-                        } else {
-                            null // 非数值类型不支持sum
-                        }
+            val numeric = series.isNumericColumn()
+            val count = series.nonNullCount()
+
+            var sum = 0.0
+            var sumReady = false
+            fun numericSum(): Double {
+                if (!sumReady) {
+                    sum = series.sumNumeric()
+                    sumReady = true
+                }
+                return sum
+            }
+
+            val colResults = ArrayList<Any?>(ops.size)
+            for (op in ops) {
+                val value: Any? = when (op) {
+                    "sum" -> if (numeric && count > 0) numericSum() else null
+                    "mean" -> if (numeric && count > 0) numericSum() / count else null
+                    "min" -> when {
+                        count == 0 -> null
+                        numeric -> series.minNumeric()
+                        else -> series.values().filterNotNull().minOfOrNull { it.toString() }
                     }
-                    "mean" -> {
-                        val values = series.values().filterNotNull()
-                        if (values.isEmpty() || values.first() !is Number) {
-                            null
-                        } else {
-                            values.sumOf { (it as Number).toDouble() } / values.size
-                        }
+                    "max" -> when {
+                        count == 0 -> null
+                        numeric -> series.maxNumeric()
+                        else -> series.values().filterNotNull().maxOfOrNull { it.toString() }
                     }
-                    "min" -> {
-                        val values = series.values().filterNotNull()
-                        if (values.isEmpty()) {
-                            null
-                        } else if (values.first() is Number) {
-                            values.minOfOrNull { (it as Number).toDouble() }
-                        } else {
-                            values.minOfOrNull { it.toString() }
-                        }
-                    }
-                    "max" -> {
-                        val values = series.values().filterNotNull()
-                        if (values.isEmpty()) {
-                            null
-                        } else if (values.first() is Number) {
-                            values.maxOfOrNull { (it as Number).toDouble() }
-                        } else {
-                            values.maxOfOrNull { it.toString() }
-                        }
-                    }
-                    "count" -> series.values().count { it != null }
+                    "count" -> count
                     else -> throw IllegalArgumentException("不支持的聚合操作: $op")
                 }
                 colResults.add(value)
             }
-            
             resultData[colName] = colResults
         }
-        
+
         return DataFrame(resultData)
     }
-    
+
     /**
      * 重命名列
      */
@@ -633,7 +553,7 @@ class DataFrame {
         
         val newData = columns.associate { colName ->
             val newName = columnsMap[colName] ?: colName
-            newName to data[colName]!!.copy(name = newName)
+            newName to data[colName]!!.renamed(newName)
         }
         
         return DataFrame(newData, newColumns)
@@ -649,7 +569,7 @@ class DataFrame {
         }
         
         val newData = this.data.toMutableMap()
-        newData[name] = Series(data, indexList, name)
+        newData[name] = Series.wrap(data, indexList, name)
         
         val newColumns = if (name in columns) columns else columns + name
         
@@ -660,22 +580,29 @@ class DataFrame {
      * 添加列（通过转换函数）
      */
     fun addColumn(name: String, transform: (Map<String, Any?>) -> Any?): DataFrame {
-        val indexList = index()
+        val n = shape().first
         val newData = this.data.toMutableMap()
-        val newColumnData = indexList.map { rowIndex ->
-            val row = this.columns.associate { colName: String ->
-                colName to when (rowIndex) {
-                    is Int -> this.data[colName]?.get(rowIndex)
-                    is String -> this.data[colName]?.get(rowIndex)
-                    else -> this.data[colName]?.get(rowIndex.toString())
-                }
-            }
-            transform(row)
+        val newColumnData = ArrayList<Any?>(n)
+        for (i in 0 until n) {
+            newColumnData.add(transform(ValueRowView(i)))
         }
-        newData[name] = Series(newColumnData, indexList, name)
+        newData[name] = Series.wrap(newColumnData, index(), name)
 
         val newColumns = if (name in columns) columns else columns + name
         return DataFrame(newData, newColumns)
+    }
+
+    /** 行值视图：按需读取单元格，避免为每一行构造完整 Map。 */
+    private inner class ValueRowView(private val rowIndex: Int) : AbstractMap<String, Any?>() {
+        override val entries: Set<Map.Entry<String, Any?>>
+            get() = columns.associateWith { data[it]!![rowIndex] }.entries
+
+        override val size: Int
+            get() = columns.size
+
+        override fun containsKey(key: String): Boolean = key in columns
+
+        override fun get(key: String): Any? = data[key]?.get(rowIndex)
     }
 
     /**
@@ -739,1047 +666,289 @@ class DataFrame {
         return builder.toString()
     }
     
-    // ==================== JNI 原生高性能操作 ====================
-    
-    /**
-     * 计算指定数值列的和 - 优先使用原生方法
-     */
-    fun sum(colName: String): Double {
-        if (isNativeAvailable()) {
-            return sumNative(colName)
-        }
-        val series = data[colName] ?: throw IllegalArgumentException("列不存在: $colName")
-        val doubleArray = series.values()
-            .filterNotNull()
-            .map { (it as Number).toDouble() }
-            .toDoubleArray()
-        var sum = 0.0
-        doubleArray.forEach {
-            sum = sum + it
-        }
-        return sum
-    }
-    
-    /**
-     * 使用原生方法计算指定数值列的和（高性能）
-     */
-    private fun sumNative(colName: String): Double {
-        val series = data[colName] ?: throw IllegalArgumentException("列不存在: $colName")
-        val doubleArray = series.values()
-            .filterNotNull()
-            .map { (it as Number).toDouble() }
+    // ==================== 原生/列式高性能操作 ====================
 
-        return doubleArray.sum()
+    private fun column(name: String): Series<Any> =
+        data[name] ?: throw IllegalArgumentException("列不存在: $name")
+
+    /** 按行位置抽取一个新的 DataFrame（保留原索引标签）。 */
+    private fun takeRows(positions: IntArray): DataFrame {
+        val newData = LinkedHashMap<String, Series<Any>>(columns.size)
+        for (colName in columns) {
+            newData[colName] = data[colName]!!.take(positions)
+        }
+        return DataFrame(newData, columns)
     }
-    
+
+    private fun appendNumericColumn(resultCol: String, values: DoubleArray): DataFrame {
+        val newData = data.toMutableMap()
+        newData[resultCol] = Series.fromDoubleArray(
+            values, null, index(), resultCol, AndaTypes.FLOAT64
+        )
+        val newColumns = if (resultCol in columns) columns else columns + resultCol
+        return DataFrame(newData, newColumns)
+    }
+
     /**
-     * 计算指定数值列的均值 - 优先使用原生方法
+     * 计算指定数值列的和
+     */
+    fun sum(colName: String): Double = column(colName).sumNumeric()
+
+    /**
+     * 计算指定数值列的均值
      */
     fun mean(colName: String): Double {
-        if (isNativeAvailable()) {
-            return meanNative(colName)
-        }
-        val series = data[colName] ?: throw IllegalArgumentException("列不存在: $colName")
-        val doubleArray = series.values()
-            .filterNotNull()
-            .map { (it as Number).toDouble() }
+        val series = column(colName)
+        val count = series.countNumeric()
+        return if (count == 0) Double.NaN else series.sumNumeric() / count
+    }
 
-        if (doubleArray.isEmpty()) return Double.NaN
-        
-        return doubleArray.sum() / doubleArray.size
-    }
-    
     /**
-     * 使用原生方法计算指定数值列的均值（高性能）
+     * 计算指定数值列的最大值
      */
-    private fun meanNative(colName: String): Double {
-        val series = data[colName] ?: throw IllegalArgumentException("列不存在: $colName")
-        val doubleArray = series.values()
-            .filterNotNull()
-            .map { (it as Number).toDouble() }
+    fun max(colName: String): Double = column(colName).maxNumeric()
 
-        return doubleArray.sum() / doubleArray.size
-    }
-    
     /**
-     * 计算指定数值列的最大值 - 优先使用原生方法
+     * 计算指定数值列的最小值
      */
-    fun max(colName: String): Double {
-        if (isNativeAvailable()) {
-            return maxNative(colName)
-        }
-        val series = data[colName] ?: throw IllegalArgumentException("列不存在: $colName")
-        val doubleArray = series.values()
-            .filterNotNull()
-            .map { (it as Number).toDouble() }
-            .toDoubleArray()
+    fun min(colName: String): Double = column(colName).minNumeric()
 
-        if (doubleArray.isEmpty()) return Double.NaN
-        
-        return doubleArray.maxOrNull() ?: Double.NaN
-    }
-    
     /**
-     * 使用原生方法计算指定数值列的最大值（高性能）
-     */
-    private fun maxNative(colName: String): Double {
-        val series = data[colName] ?: throw IllegalArgumentException("列不存在: $colName")
-        val doubleArray = series.values()
-            .filterNotNull()
-            .map { (it as Number).toDouble() }
-            .toDoubleArray()
-        
-        return NativeMath.maxDoubleArray(doubleArray)
-    }
-    
-    /**
-     * 计算指定数值列的最小值 - 优先使用原生方法
-     */
-    fun min(colName: String): Double {
-        if (isNativeAvailable()) {
-            return minNative(colName)
-        }
-        val series = data[colName] ?: throw IllegalArgumentException("列不存在: $colName")
-        val doubleArray = series.values()
-            .filterNotNull()
-            .map { (it as Number).toDouble() }
-            .toDoubleArray()
-        
-        if (doubleArray.isEmpty()) return Double.NaN
-        
-        return doubleArray.minOrNull() ?: Double.NaN
-    }
-    
-    /**
-     * 使用原生方法计算指定数值列的最小值（高性能）
-     */
-    private fun minNative(colName: String): Double {
-        val series = data[colName] ?: throw IllegalArgumentException("列不存在: $colName")
-        val doubleArray = series.values()
-            .filterNotNull()
-            .map { (it as Number).toDouble() }
-            .toDoubleArray()
-        
-        return NativeMath.minDoubleArray(doubleArray)
-    }
-    
-    /**
-     * 计算指定数值列的方差 - 优先使用原生方法
+     * 计算指定数值列的方差（样本方差，ddof=1）
      */
     fun variance(colName: String): Double {
-        if (isNativeAvailable()) {
-            return varianceNative(colName)
-        }
-        val series = data[colName] ?: throw IllegalArgumentException("列不存在: $colName")
-        val doubleArray = series.values()
-            .filterNotNull()
-            .map { (it as Number).toDouble() }
-            .toDoubleArray()
-        
-        if (doubleArray.size < 2) return Double.NaN
-        
-        val mean = doubleArray.sum() / doubleArray.size
-        val sumSquaredDiff = doubleArray.sumOf { (it - mean) * (it - mean) }
-        return sumSquaredDiff / (doubleArray.size - 1)
+        val series = column(colName)
+        return if (series.countNumeric() < 2) Double.NaN else series.varianceNumeric()
     }
-    
+
     /**
-     * 使用原生方法计算指定数值列的方差（高性能）
-     */
-    private fun varianceNative(colName: String): Double {
-        val series = data[colName] ?: throw IllegalArgumentException("列不存在: $colName")
-        val doubleArray = series.values()
-            .filterNotNull()
-            .map { (it as Number).toDouble() }
-            .toDoubleArray()
-        
-        return NativeMath.variance(doubleArray)
-    }
-    
-    /**
-     * 计算指定数值列的标准差 - 优先使用原生方法
+     * 计算指定数值列的标准差（样本标准差，ddof=1）
      */
     fun std(colName: String): Double {
-        if (isNativeAvailable()) {
-            return stdNative(colName)
-        }
         val variance = variance(colName)
-        return kotlin.math.sqrt(variance)
+        return if (variance.isNaN()) Double.NaN else kotlin.math.sqrt(variance)
     }
-    
+
     /**
-     * 使用原生方法计算指定数值列的标准差（高性能）
-     */
-    private fun stdNative(colName: String): Double {
-        val series = data[colName] ?: throw IllegalArgumentException("列不存在: $colName")
-        val doubleArray = series.values()
-            .filterNotNull()
-            .map { (it as Number).toDouble() }
-            .toDoubleArray()
-        
-        return NativeMath.std(doubleArray)
-    }
-    
-    /**
-     * 对指定数值列进行标准归一化 - 优先使用原生方法
+     * 对指定数值列进行标准归一化（z-score）
      */
     fun normalize(colName: String): DataFrame {
-        if (isNativeAvailable()) {
-            return normalizeNative(colName)
+        val series = column(colName)
+        if (series.size() == 0) return this
+
+        val mean = series.mean() // 空值会被跳过；空列在上面已返回
+        val std = kotlin.math.sqrt(series.populationVarianceNumeric())
+        if (std == 0.0 || std.isNaN()) return this
+
+        val values = DoubleArray(series.size())
+        for (i in values.indices) {
+            val v = series[i]
+            values[i] = if (v is Number) (v.toDouble() - mean) / std else Double.NaN
         }
-        
-        val series = data[colName] ?: throw IllegalArgumentException("列不存在: $colName")
-        val doubleArray = series.values()
-            .filterNotNull()
-            .map { (it as Number).toDouble() }
-            .toDoubleArray()
-        
-        if (doubleArray.isEmpty()) return this
-        
-        val mean = doubleArray.sum() / doubleArray.size
-        val std = kotlin.math.sqrt(doubleArray.sumOf { (it - mean) * (it - mean) } / doubleArray.size)
-        
-        if (std == 0.0) return this
-        
-        val normalized = doubleArray.map { (it - mean) / std }
-        val newValues = normalized.map { it as Any? }
-        val newSeries = Series(newValues, index(), colName)
-        
+        return replaceColumn(colName, Series.fromDoubleArray(values, null, index(), colName, AndaTypes.FLOAT64))
+    }
+
+    private fun replaceColumn(colName: String, series: Series<Any>): DataFrame {
         val newData = data.toMutableMap()
-        newData[colName] = newSeries
-        
+        newData[colName] = series
         return DataFrame(newData, columns)
     }
-    
-    /**
-     * 使用原生方法对指定数值列进行归一化（高性能）
-     */
-    private fun normalizeNative(colName: String): DataFrame {
-        val series = data[colName] ?: throw IllegalArgumentException("列不存在: $colName")
-        val doubleArray = series.values()
-            .filterNotNull()
-            .map { (it as Number).toDouble() }
-            .toDoubleArray()
-        
-        val normalized = NativeMath.normalize(doubleArray)
-        
-        val newValues = normalized.map { it as Any? }
-        val newSeries = Series(newValues, index(), colName)
-        
-        val newData = data.toMutableMap()
-        newData[colName] = newSeries
-        
-        return DataFrame(newData, columns)
+
+    private fun numericPair(col1: String, col2: String): Pair<DoubleArray, DoubleArray> {
+        val s1 = column(col1)
+        val s2 = column(col2)
+        if (s1.size() != s2.size()) {
+            throw IllegalArgumentException("列长度不匹配: $col1 (${s1.size()}) vs $col2 (${s2.size()})")
+        }
+        return s1.toDoubleArrayNumeric() to s2.toDoubleArrayNumeric()
     }
-    
+
     /**
-     * 向量化加法 - 优先使用原生方法
+     * 向量化加法
      */
     fun vectorizedAdd(col1: String, col2: String, resultCol: String): DataFrame {
-        if (isNativeAvailable()) {
-            return vectorizedAddNative(col1, col2, resultCol)
+        val (a, b) = numericPair(col1, col2)
+        val result = if (a.size > 256 && NativeAvailability.available) {
+            NativeMath.vectorizedAdd(a, b)
+        } else {
+            DoubleArray(a.size) { a[it] + b[it] }
         }
-        
-        val series1 = data[col1] ?: throw IllegalArgumentException("列不存在: $col1")
-        val series2 = data[col2] ?: throw IllegalArgumentException("列不存在: $col2")
-        
-        val array1 = series1.values()
-            .filterNotNull()
-            .map { (it as Number).toDouble() }
-        
-        val array2 = series2.values()
-            .filterNotNull()
-            .map { (it as Number).toDouble() }
-        
-        if (array1.size != array2.size) {
-            throw IllegalArgumentException("列长度不匹配: $col1 (${array1.size}) vs $col2 (${array2.size})")
-        }
-        
-        val result = array1.zip(array2) { a, b -> a + b }
-        val newValues = result.map { it as Any? }
-        val newSeries = Series(newValues, index(), resultCol)
-        
-        val newData = data.toMutableMap()
-        newData[resultCol] = newSeries
-        
-        val newColumns = if (resultCol in columns) columns else columns + resultCol
-        
-        return DataFrame(newData, newColumns)
+        return appendNumericColumn(resultCol, result)
     }
-    
+
     /**
-     * 使用原生方法进行向量化加法（高性能）
-     */
-    private fun vectorizedAddNative(col1: String, col2: String, resultCol: String): DataFrame {
-        val series1 = data[col1] ?: throw IllegalArgumentException("列不存在: $col1")
-        val series2 = data[col2] ?: throw IllegalArgumentException("列不存在: $col2")
-        
-        val array1 = series1.values()
-            .filterNotNull()
-            .map { (it as Number).toDouble() }
-            .toDoubleArray()
-        
-        val array2 = series2.values()
-            .filterNotNull()
-            .map { (it as Number).toDouble() }
-            .toDoubleArray()
-        
-        val result = NativeMath.vectorizedAdd(array1, array2)
-        
-        val newValues = result.map { it as Any? }
-        val newSeries = Series(newValues, index(), resultCol)
-        
-        val newData = data.toMutableMap()
-        newData[resultCol] = newSeries
-        
-        val newColumns = if (resultCol in columns) columns else columns + resultCol
-        
-        return DataFrame(newData, newColumns)
-    }
-    
-    /**
-     * 向量化乘法 - 优先使用原生方法
+     * 向量化乘法
      */
     fun vectorizedMultiply(col1: String, col2: String, resultCol: String): DataFrame {
-        if (isNativeAvailable()) {
-            return vectorizedMultiplyNative(col1, col2, resultCol)
+        val (a, b) = numericPair(col1, col2)
+        val result = if (a.size > 256 && NativeAvailability.available) {
+            NativeMath.vectorizedMultiply(a, b)
+        } else {
+            DoubleArray(a.size) { a[it] * b[it] }
         }
-        
-        val series1 = data[col1] ?: throw IllegalArgumentException("列不存在: $col1")
-        val series2 = data[col2] ?: throw IllegalArgumentException("列不存在: $col2")
-        
-        val array1 = series1.values()
-            .filterNotNull()
-            .map { (it as Number).toDouble() }
-        
-        val array2 = series2.values()
-            .filterNotNull()
-            .map { (it as Number).toDouble() }
-        
-        if (array1.size != array2.size) {
-            throw IllegalArgumentException("列长度不匹配: $col1 (${array1.size}) vs $col2 (${array2.size})")
-        }
-        
-        val result = array1.zip(array2) { a, b -> a * b }
-        val newValues = result.map { it as Any? }
-        val newSeries = Series(newValues, index(), resultCol)
-        
-        val newData = data.toMutableMap()
-        newData[resultCol] = newSeries
-        
-        val newColumns = if (resultCol in columns) columns else columns + resultCol
-        
-        return DataFrame(newData, newColumns)
+        return appendNumericColumn(resultCol, result)
     }
-    
+
     /**
-     * 使用原生方法进行向量化乘法（高性能）
-     */
-    private fun vectorizedMultiplyNative(col1: String, col2: String, resultCol: String): DataFrame {
-        val series1 = data[col1] ?: throw IllegalArgumentException("列不存在: $col1")
-        val series2 = data[col2] ?: throw IllegalArgumentException("列不存在: $col2")
-        
-        val array1 = series1.values()
-            .filterNotNull()
-            .map { (it as Number).toDouble() }
-            .toDoubleArray()
-        
-        val array2 = series2.values()
-            .filterNotNull()
-            .map { (it as Number).toDouble() }
-            .toDoubleArray()
-        
-        val result = NativeMath.vectorizedMultiply(array1, array2)
-        
-        val newValues = result.map { it as Any? }
-        val newSeries = Series(newValues, index(), resultCol)
-        
-        val newData = data.toMutableMap()
-        newData[resultCol] = newSeries
-        
-        val newColumns = if (resultCol in columns) columns else columns + resultCol
-        
-        return DataFrame(newData, newColumns)
-    }
-    
-    /**
-     * 计算点积 - 优先使用原生方法
+     * 计算点积
      */
     fun dotProduct(col1: String, col2: String): Double {
-        if (isNativeAvailable()) {
-            return dotProductNative(col1, col2)
+        val (a, b) = numericPair(col1, col2)
+        if (a.size > 256 && NativeAvailability.available) {
+            return NativeMath.dotProduct(a, b)
         }
-        
-        val series1 = data[col1] ?: throw IllegalArgumentException("列不存在: $col1")
-        val series2 = data[col2] ?: throw IllegalArgumentException("列不存在: $col2")
-        
-        val array1 = series1.values()
-            .filterNotNull()
-            .map { (it as Number).toDouble() }
-        
-        val array2 = series2.values()
-            .filterNotNull()
-            .map { (it as Number).toDouble() }
-        
-        if (array1.size != array2.size) {
-            throw IllegalArgumentException("列长度不匹配: $col1 (${array1.size}) vs $col2 (${array2.size})")
-        }
-        
-        return array1.zip(array2) { a, b -> a * b }.sum()
+        var sum = 0.0
+        for (i in a.indices) sum += a[i] * b[i]
+        return sum
     }
-    
+
     /**
-     * 使用原生方法计算点积（高性能）
-     */
-    private fun dotProductNative(col1: String, col2: String): Double {
-        val series1 = data[col1] ?: throw IllegalArgumentException("列不存在: $col1")
-        val series2 = data[col2] ?: throw IllegalArgumentException("列不存在: $col2")
-        
-        val array1 = series1.values()
-            .filterNotNull()
-            .map { (it as Number).toDouble() }
-            .toDoubleArray()
-        
-        val array2 = series2.values()
-            .filterNotNull()
-            .map { (it as Number).toDouble() }
-            .toDoubleArray()
-        
-        return NativeMath.dotProduct(array1, array2)
-    }
-    
-    /**
-     * 计算范数 - 优先使用原生方法
+     * 计算范数
      */
     fun norm(colName: String): Double {
-        if (isNativeAvailable()) {
-            return normNative(colName)
+        val array = column(colName).toDoubleArrayNumeric()
+        if (array.size > 256 && NativeAvailability.available) {
+            return NativeMath.norm(array)
         }
-        
-        val series = data[colName] ?: throw IllegalArgumentException("列不存在: $colName")
-        val doubleArray = series.values()
-            .filterNotNull()
-            .map { (it as Number).toDouble() }
-        
-        if (doubleArray.isEmpty()) return 0.0
-        
-        return kotlin.math.sqrt(doubleArray.sumOf { it * it })
+        var sumSq = 0.0
+        for (v in array) sumSq += v * v
+        return kotlin.math.sqrt(sumSq)
     }
-    
+
     /**
-     * 使用原生方法计算范数（高性能）
-     */
-    private fun normNative(colName: String): Double {
-        val series = data[colName] ?: throw IllegalArgumentException("列不存在: $colName")
-        val doubleArray = series.values()
-            .filterNotNull()
-            .map { (it as Number).toDouble() }
-            .toDoubleArray()
-        
-        return NativeMath.norm(doubleArray)
-    }
-    
-    /**
-     * 排序 - 优先使用原生方法
+     * 排序（保留原索引；数值列按数值大小排序，空值排在最后）
      */
     fun sortValues(by: String, descending: Boolean = false): DataFrame {
-        if (isNativeAvailable()) {
-            return sortValuesNative(by, descending)
-        }
-        
-        if (by !in columns) {
-            throw IllegalArgumentException("列不存在: $by")
-        }
-        
-        val series = data[by]!!
-        val indexList = index()
-        val sortedPairs = indexList.zip(series.values()).sortedBy { 
-            it.second?.toString() 
-        }
-        
-        val finalPairs = if (descending) {
-            sortedPairs.reversed()
+        val positions = column(by).sortIndices(descending).toIntArray()
+        return takeRows(positions)
+    }
+
+    /**
+     * 布尔筛选（大于阈值）
+     */
+    fun filterGreaterThan(colName: String, threshold: Double): DataFrame =
+        where(colName, threshold)
+
+    /**
+     * 查找空值索引
+     */
+    fun findNullIndices(colName: String): List<Int> = column(colName).findNullIndices()
+
+    /**
+     * 丢弃指定列为空的行
+     */
+    fun dropNullValues(colName: String): DataFrame {
+        val positions = column(colName).nonNullPositions()
+        return takeRows(positions)
+    }
+
+    /**
+     * 填充空值
+     */
+    fun fillNull(colName: String, value: Any): DataFrame {
+        val series = column(colName)
+        if (series.nonNullCount() == series.size()) return this
+        val newSeries: Series<Any> = if (value is Number && series.isNumericColumn()) {
+            @Suppress("UNCHECKED_CAST")
+            series.fillNullWithConstant(value.toDouble()) as Series<Any>
         } else {
-            sortedPairs
+            val values = ArrayList<Any?>(series.size())
+            for (i in 0 until series.size()) {
+                val v = series[i]
+                values.add(v ?: value)
+            }
+            Series.wrap(values, index(), colName, series.dtype())
         }
-        
-        val newIndex = finalPairs.map { it.first }
-        val sortedRows = newIndex.map { label ->
-            val pos = indexList.indexOf(label)
-            columns.associate { colName -> colName to data[colName]!![pos] }
-        }
-        
-        return DataFrame(sortedRows)
+        return replaceColumn(colName, newSeries)
     }
-    
+
     /**
-     * 使用原生方法进行排序（高性能）
+     * 分组求和（O(n) 哈希聚合）
      */
-    private fun sortValuesNative(colName: String, descending: Boolean = false): DataFrame {
-        val series = data[colName] ?: throw IllegalArgumentException("列不存在: $colName")
-        val doubleArray = series.values()
-            .filterNotNull()
-            .map { (it as Number).toDouble() }
-            .toDoubleArray()
-        
-        val indices = if (descending) {
-            NativeMath.argsort(doubleArray).reversed()
-        } else {
-            NativeMath.argsort(doubleArray).toList()
-        }
-        
-        val indexList = index()
-        val newIndex = indices.map { indexList[it] }
-        val sortedRows = newIndex.map { label ->
-            val pos = indexList.indexOf(label)
-            columns.associate { colName -> colName to data[colName]!![pos] }
-        }
-        
-        return DataFrame(sortedRows)
-    }
-    
-    /**
-     * 布尔筛选（大于阈值）- 优先使用原生方法
-     */
-    fun filterGreaterThan(colName: String, threshold: Double): DataFrame {
-        if (isNativeAvailable()) {
-            return filterGreaterThanNative(colName, threshold)
-        }
-        
-        val series = data[colName] ?: throw IllegalArgumentException("列不存在: $colName")
-        val values = series.values()
-        
-        val filteredIndices = values.mapIndexedNotNull { index, value ->
-            if (value != null && (value as Number).toDouble() > threshold) index else null
-        }
-        
-        val filteredRows = filteredIndices.map { i ->
-            columns.associate { colName -> colName to data[colName]!![i] }
-        }
-        
-        return DataFrame(filteredRows)
-    }
-    
-    /**
-     * 使用原生方法进行布尔筛选（高性能）
-     */
-    private fun filterGreaterThanNative(colName: String, threshold: Double): DataFrame {
-        val series = data[colName] ?: throw IllegalArgumentException("列不存在: $colName")
-        val doubleArray = series.values()
-            .filterNotNull()
-            .map { (it as Number).toDouble() }
-            .toDoubleArray()
-        
-        val mask = NativeMath.greaterThan(doubleArray, threshold)
-        val indices = NativeData.where(mask)
-        val filteredRows = indices.map { i ->
-            columns.associate { colName2 ->
-                colName2 to data[colName2]!![i.toInt()]
+    fun groupBySum(groupCol: String, valueCol: String): DataFrame {
+        val groupSeries = column(groupCol)
+        val valueSeries = column(valueCol)
+        val n = groupSeries.size()
+        val sums = LinkedHashMap<Any?, Double>()
+
+        for (i in 0 until n) {
+            val key = groupSeries[i] ?: continue
+            val value = valueSeries[i]
+            if (value is Number) {
+                sums[key] = (sums[key] ?: 0.0) + value.toDouble()
             }
         }
 
-        return DataFrame(filteredRows)
-    }
-    
-    /**
-     * 查找空值索引 - 优先使用原生方法
-     */
-    fun findNullIndices(colName: String): List<Int> {
-        if (isNativeAvailable()) {
-            return findNullIndicesNative(colName)
+        val resultRows = ArrayList<Map<String, Any?>>(sums.size)
+        for ((key, sum) in sums) {
+            resultRows.add(mapOf(groupCol to key, valueCol to sum))
         }
-        
-        val series = data[colName] ?: throw IllegalArgumentException("列不存在: $colName")
-        return series.values()
-            .mapIndexedNotNull { index, value -> if (value == null) index else null }
-    }
-    
-    /**
-     * 使用原生方法查找空值索引（高性能）
-     */
-    private fun findNullIndicesNative(colName: String): List<Int> {
-        val series = data[colName] ?: throw IllegalArgumentException("列不存在: $colName")
-        val doubleArray = series.values()
-            .map { 
-                if (it == null) Double.NaN 
-                else (it as Number).toDouble() 
-            }
-            .toDoubleArray()
-        
-        return NativeData.findNullIndices(doubleArray).toList()
-    }
-    
-    /**
-     * 丢弃空值 - 优先使用原生方法
-     */
-    fun dropNullValues(colName: String): DataFrame {
-        if (isNativeAvailable()) {
-            return dropNullValuesNative(colName)
-        }
-        
-        val series = data[colName] ?: throw IllegalArgumentException("列不存在: $colName")
-        val nonNullIndices = series.values()
-            .mapIndexedNotNull { index, value -> if (value != null) index else null }
-        
-        val newRows = nonNullIndices.map { i ->
-            columns.associate { colName -> 
-                colName to data[colName]!![i] 
-            }
-        }
-        
-        return DataFrame(newRows)
-    }
-    
-    /**
-     * 使用原生方法丢弃空值（高性能）
-     */
-    private fun dropNullValuesNative(colName: String): DataFrame {
-        val series = data[colName] ?: throw IllegalArgumentException("列不存在: $colName")
-        val doubleArray = series.values()
-            .map { 
-                if (it == null) Double.NaN 
-                else (it as Number).toDouble() 
-            }
-            .toDoubleArray()
-        
-        val result = NativeData.dropNullValues(doubleArray)
-        
-        // 找到非空值的原始索引
-        val nonNullIndices = mutableListOf<Int>()
-        for (i in series.values().indices) {
-            if (series.values()[i] != null) {
-                nonNullIndices.add(i)
-            }
-        }
-        
-        // 创建新的DataFrame，只包含非空行
-        val newRows = nonNullIndices.map { i ->
-            columns.associate { colName -> 
-                colName to data[colName]!![i]
-            }
-        }
-        
-        return DataFrame(newRows)
-    }
-    
-    /**
-     * 填充空值 - 优先使用原生方法
-     */
-    fun fillNull(colName: String, value: Any): DataFrame {
-        if (isNativeAvailable() && value is Number) {
-            return fillNullWithConstantNative(colName, value.toDouble())
-        }
-        
-        val series = data[colName] ?: throw IllegalArgumentException("列不存在: $colName")
-        val newValues = series.values().map { if (it == null) value else it }
-        val newSeries = Series(newValues, index(), colName)
-        
-        val newData = data.toMutableMap()
-        newData[colName] = newSeries
-        
-        return DataFrame(newData, columns)
-    }
-    
-    /**
-     * 使用原生方法填充空值（高性能）
-     */
-    private fun fillNullWithConstantNative(colName: String, value: Double): DataFrame {
-        val series = data[colName] ?: throw IllegalArgumentException("列不存在: $colName")
-        val doubleArray = series.values()
-            .map { 
-                if (it == null) Double.NaN 
-                else (it as Number).toDouble() 
-            }
-            .toDoubleArray()
-        
-        val result = NativeData.fillNullWithConstant(doubleArray, value)
-        
-        val newValues = result.map { it as Any? }
-        val newSeries = Series(newValues, index(), colName)
-        
-        val newData = data.toMutableMap()
-        newData[colName] = newSeries
-        
-        return DataFrame(newData, columns)
-    }
-    
-    /**
-     * 分组求和 - 优先使用原生方法
-     */
-    fun groupBySum(groupCol: String, valueCol: String): DataFrame {
-        if (isNativeAvailable()) {
-            return groupBySumNative(groupCol, valueCol)
-        }
-        
-        val groupSeries = data[groupCol] ?: throw IllegalArgumentException("列不存在: $groupCol")
-        val valueSeries = data[valueCol] ?: throw IllegalArgumentException("列不存在: $valueCol")
-        
-        // 分组并求和
-        val groupMap = mutableMapOf<Any?, Double>()
-        
-        val indexList = index()
-        for (i in indexList.indices) {
-            val groupKey = groupSeries[i]
-            val value = valueSeries[i]
-            
-            if (groupKey != null && value != null) {
-                val currentValue = groupMap[groupKey] ?: 0.0
-                groupMap[groupKey] = currentValue + (value as Number).toDouble()
-            }
-        }
-        
-        // 转换为DataFrame
-        val resultRows = groupMap.map { (key, sum) ->
-            mapOf(
-                groupCol to key,
-                valueCol to sum
-            )
-        }
-        
         return DataFrame(resultRows)
     }
-    
+
     /**
-     * 使用原生方法进行分组求和（高性能）
+     * 排序索引
      */
-    private fun groupBySumNative(groupCol: String, valueCol: String): DataFrame {
-        val groupSeries = data[groupCol] ?: throw IllegalArgumentException("列不存在: $groupCol")
-        val valueSeries = data[valueCol] ?: throw IllegalArgumentException("列不存在: $valueCol")
-        
-        // 将分组列转换为整数索引
-        val uniqueGroups = groupSeries.values().filterNotNull().toSet().sortedWith(compareBy { it.toString() })
-        val groupToIndex = uniqueGroups.mapIndexed { index, value -> value to index }.toMap()
-        
-        val groups = groupSeries.values().map { 
-            groupToIndex[it] ?: -1 
-        }.toIntArray()
-        
-        val values = valueSeries.values()
-            .filterNotNull()
-            .map { (it as Number).toDouble() }
-            .toDoubleArray()
-        
-        val result = NativeData.groupBySum(values, groups)
-        
-        // 转换为DataFrame
-        val resultRows = result.map { (key, sum) ->
-            mapOf(
-                groupCol to uniqueGroups[key.toInt()],
-                valueCol to sum
-            )
-        }
-        
-        return DataFrame(resultRows)
-    }
-    
+    fun sortIndices(colName: String, descending: Boolean = false): List<Int> =
+        column(colName).sortIndices(descending)
+
     /**
-     * 排序索引 - 优先使用原生方法
+     * 数据合并（哈希连接，支持任意可哈希的键类型）
      */
-    fun sortIndices(colName: String, descending: Boolean = false): List<Int> {
-        if (isNativeAvailable()) {
-            return sortIndicesNative(colName, descending)
-        }
-        
-        val series = data[colName] ?: throw IllegalArgumentException("列不存在: $colName")
-        val values = series.values()
-        
-        return values.mapIndexed { index, value -> index to value }
-            .sortedBy { it.second?.toString() }
-            .let { if (descending) it.reversed() else it }
-            .map { it.first }
-    }
-    
+    fun merge(other: DataFrame, on: String, how: String = "inner"): DataFrame =
+        joinRows(other, on, how)
+
     /**
-     * 使用原生方法进行排序索引（高性能）
-     */
-    private fun sortIndicesNative(colName: String, descending: Boolean = false): List<Int> {
-        val series = data[colName] ?: throw IllegalArgumentException("列不存在: $colName")
-        val doubleArray = series.values()
-            .filterNotNull()
-            .map { (it as Number).toDouble() }
-            .toDoubleArray()
-        
-        return NativeData.sortIndices(doubleArray, descending).toList()
-    }
-    
-    /**
-     * 数据合并 - 优先使用原生方法
-     */
-    fun merge(other: DataFrame, on: String, how: String = "inner"): DataFrame {
-        if (isNativeAvailable()) {
-            return mergeNative(other, on)
-        }
-        
-        val resultRows = mutableListOf<Map<String, Any?>>()
-        
-        val indexList = index()
-        val otherIndexList = other.index()
-        
-        for (i in indexList.indices) {
-            val thisValue = at(i, on)
-            for (j in otherIndexList.indices) {
-                val otherValue = other.at(j, on)
-                if (thisValue == otherValue) {
-                    val row = mutableMapOf<String, Any?>()
-                    // 添加当前DataFrame的所有列
-                    columns.forEach { colName ->
-                        row[colName] = at(i, colName)
-                    }
-                    // 添加另一个DataFrame的所有列（排除连接列）
-                    other.columns().forEach { colName ->
-                        if (colName != on) {
-                            row[colName] = other.at(j, colName)
-                        }
-                    }
-                    resultRows.add(row)
-                }
-            }
-        }
-        
-        return DataFrame(resultRows)
-    }
-    
-    /**
-     * 使用原生方法进行数据合并（高性能）
-     */
-    private fun mergeNative(other: DataFrame, on: String): DataFrame {
-        val leftSeries = this.data[on] ?: throw IllegalArgumentException("列不存在: $on")
-        val rightSeries = other.data[on] ?: throw IllegalArgumentException("列不存在: $on")
-        
-        val leftArray = leftSeries.values()
-            .filterNotNull()
-            .map { (it as Number).toDouble() }
-            .toDoubleArray()
-        
-        val rightArray = rightSeries.values()
-            .filterNotNull()
-            .map { (it as Number).toDouble() }
-            .toDoubleArray()
-        
-        val indices = NativeData.mergeIndices(leftArray, rightArray)
-        
-        // indices数组包含成对的索引：[leftIndex1, rightIndex1, leftIndex2, rightIndex2, ...]
-        val resultRows = mutableListOf<Map<String, Any?>>()
-        
-        for (i in indices.indices step 2) {
-            val leftIndex = indices[i]
-            val rightIndex = indices[i + 1]
-            
-            val row = mutableMapOf<String, Any?>()
-            // 添加左DataFrame的所有列
-            columns.forEach { colName ->
-                row[colName] = this.data[colName]!![leftIndex]
-            }
-            // 添加右DataFrame的所有列（排除连接列）
-            other.columns().forEach { colName ->
-                if (colName != on) {
-                    row[colName] = other.data[colName]!![rightIndex]
-                }
-            }
-            resultRows.add(row)
-        }
-        
-        return DataFrame(resultRows)
-    }
-    
-    /**
-     * 布尔索引 - 优先使用原生方法
+     * 布尔索引（列值大于阈值）
      */
     fun where(colName: String, threshold: Double): DataFrame {
-        if (isNativeAvailable()) {
-            return whereNative(colName, threshold)
+        val series = column(colName)
+        val positions = ArrayList<Int>()
+        for (i in 0 until series.size()) {
+            val v = series[i]
+            if (v is Number && v.toDouble() > threshold) positions.add(i)
         }
-        
-        val series = data[colName] ?: throw IllegalArgumentException("列不存在: $colName")
-        val values = series.values()
-        
-        val filteredIndices = values.mapIndexedNotNull { index, value ->
-            if (value != null && (value as Number).toDouble() > threshold) index else null
-        }
-        
-        val filteredRows = filteredIndices.map { i ->
-            columns.associate { colName -> colName to data[colName]!![i] }
-        }
-        
-        return DataFrame(filteredRows)
+        return takeRows(positions.toIntArray())
     }
-    
+
     /**
-     * 使用原生方法进行布尔索引（高性能）
+     * 统计描述
      */
-    private fun whereNative(colName: String, threshold: Double): DataFrame {
-        val series = data[colName] ?: throw IllegalArgumentException("列不存在: $colName")
-        val doubleArray = series.values()
-            .filterNotNull()
-            .map { (it as Number).toDouble() }
-            .toDoubleArray()
-        
-        val mask = NativeMath.greaterThan(doubleArray, threshold)
-        val indices = NativeData.where(mask)
-        
-        val filteredRows = indices.map { i ->
-            columns.associate { colName -> colName to data[colName]!![i] }
-        }
-        
-        return DataFrame(filteredRows)
-    }
-    
+    fun describe(colName: String): Map<String, Double> = column(colName).describe()
+
     /**
-     * 统计描述 - 优先使用原生方法
-     */
-    fun describe(colName: String): Map<String, Double> {
-        if (isNativeAvailable()) {
-            return describeNative(colName)
-        }
-        
-        val series = data[colName] ?: throw IllegalArgumentException("列不存在: $colName")
-        val doubleArray = series.values()
-            .filterNotNull()
-            .map { (it as Number).toDouble() }
-        
-        if (doubleArray.isEmpty()) {
-            return mapOf(
-                "count" to 0.0,
-                "mean" to Double.NaN,
-                "std" to Double.NaN,
-                "min" to Double.NaN,
-                "max" to Double.NaN
-            )
-        }
-        
-        val count = doubleArray.size.toDouble()
-        val mean = doubleArray.sum() / count
-        val variance = doubleArray.sumOf { (it - mean) * (it - mean) } / count
-        val std = kotlin.math.sqrt(variance)
-        val min = doubleArray.minOrNull() ?: Double.NaN
-        val max = doubleArray.maxOrNull() ?: Double.NaN
-        
-        return mapOf(
-            "count" to count,
-            "mean" to mean,
-            "std" to std,
-            "min" to min,
-            "max" to max
-        )
-    }
-    
-    /**
-     * 使用原生方法进行统计描述（高性能）
-     */
-    private fun describeNative(colName: String): Map<String, Double> {
-        val series = data[colName] ?: throw IllegalArgumentException("列不存在: $colName")
-        val doubleArray = series.values()
-            .filterNotNull()
-            .map { (it as Number).toDouble() }
-            .toDoubleArray()
-        
-        val result = NativeData.describe(doubleArray)
-        
-        return mapOf(
-            "count" to result[0],
-            "mean" to result[1],
-            "std" to result[2],
-            "min" to result[3],
-            "max" to result[4]
-        )
-    }
-    
-    /**
-     * 数据采样 - 优先使用原生方法
+     * 数据采样（保留原索引）
      */
     fun sample(sampleSize: Int): DataFrame {
-        if (isNativeAvailable()) {
-            return sampleNative(sampleSize)
+        val n = shape().first
+        if (n == 0 || sampleSize <= 0) return takeRows(IntArray(0))
+        if (sampleSize >= n) return this
+
+        val random = java.util.Random()
+        val picked = java.util.HashSet<Int>(sampleSize * 2)
+        while (picked.size < sampleSize) {
+            picked.add(random.nextInt(n))
         }
-        
-        val indexList = index()
-        if (indexList.isEmpty()) {
-            return this
-        }
-        
-        val actualSampleSize = kotlin.math.min(sampleSize, indexList.size)
-        val indices = (0 until indexList.size).shuffled().take(actualSampleSize)
-        
-        val sampledRows = indices.map { i ->
-            columns.associate { colName -> 
-                colName to data[colName]!![i] 
-            }
-        }
-        
-        return DataFrame(sampledRows)
+        return takeRows(picked.toIntArray())
     }
-    
+
     /**
-     * 使用原生方法进行数据采样（高性能）
-     */
-    private fun sampleNative(sampleSize: Int): DataFrame {
-        val indexList = index()
-        if (indexList.isEmpty()) {
-            return this
-        }
-        
-        // 获取所有列的数值数组
-        val arrays = columns.map { colName ->
-            val series = data[colName]!!
-            series.values()
-                .map { 
-                    if (it == null) Double.NaN 
-                    else (it as Number).toDouble() 
-                }
-                .toDoubleArray()
-        }
-        
-        if (arrays.isEmpty()) {
-            return this
-        }
-        
-        // 对第一列进行采样，获取索引
-        val sampleIndices = NativeData.sample(arrays[0], sampleSize).map { it.toInt() }
-        
-        // 根据采样索引构建新的DataFrame
-        val sampledRows = sampleIndices.map { i ->
-            columns.associate { colName -> 
-                colName to data[colName]!![i] 
-            }
-        }
-        
-        return DataFrame(sampledRows)
-    }
-    
-    /**
-     * 批量处理 - 优先使用原生方法
+     * 批量处理（兼容接口）
      */
     fun processBatch(colName: String, batchSize: Int = 1000): DataFrame {
-        if (isNativeAvailable()) {
-            return processBatchNative(colName, batchSize)
+        val series = column(colName)
+        val values = series.toDoubleArrayNumeric()
+        val result = if (NativeAvailability.available) {
+            NativeBatch.processBatch(values, batchSize)
+        } else {
+            values
         }
-        
-        // Kotlin实现：简单地返回原数据（因为批量处理主要是为了性能优化）
-        // 在实际应用中，这里可以实现分块处理逻辑
-        return this
+        return replaceColumn(
+            colName,
+            Series.fromDoubleArray(result, null, index(), colName, AndaTypes.FLOAT64)
+        )
     }
-    
-    /**
-     * 使用原生方法批量处理（高性能）
-     */
-    private fun processBatchNative(colName: String, batchSize: Int = 1000): DataFrame {
-        val series = data[colName] ?: throw IllegalArgumentException("列不存在: $colName")
-        val doubleArray = series.values()
-            .filterNotNull()
-            .map { (it as Number).toDouble() }
-            .toDoubleArray()
-        
-        val result = NativeBatch.processBatch(doubleArray, batchSize)
-        
-        val newValues = result.map { it as Any? }
-        val newSeries = Series(newValues, index(), colName)
-        
-        val newData = data.toMutableMap()
-        newData[colName] = newSeries
-        
-        return DataFrame(newData, columns)
-    }
-    
+
     /**
      * 常用的合并操作 - 合并多个DataFrame
      */
@@ -1794,309 +963,148 @@ class DataFrame {
     /**
      * 连接操作（类似SQL JOIN）- 支持多种连接类型
      */
-    fun join(other: DataFrame, on: String, how: String = "inner"): DataFrame {
-        return when (how.lowercase()) {
-            "inner" -> merge(other, on)
-            "left" -> leftJoin(other, on)
-            "right" -> rightJoin(other, on)
-            "outer" -> outerJoin(other, on)
-            else -> throw IllegalArgumentException("不支持的连接类型: $how")
-        }
-    }
-    
+    fun join(other: DataFrame, on: String, how: String = "inner"): DataFrame =
+        joinRows(other, on, how)
+
     /**
-     * 左连接
+     * 哈希连接：O(n + m + 输出行数)，避免原来的 O(n × m) 双重循环。
+     * 支持 Int/String 等任意可哈希键，空键不参与匹配（与 SQL 语义一致）。
      */
-    private fun leftJoin(other: DataFrame, on: String): DataFrame {
-        val resultRows = mutableListOf<Map<String, Any?>>()
-        
-        val indexList = index()
-        val otherIndexList = other.index()
-        
-        for (i in indexList.indices) {
-            val thisValue = at(i, on)
-            var matched = false
-            
-            for (j in otherIndexList.indices) {
-                val otherValue = other.at(j, on)
-                if (thisValue == otherValue) {
-                    val row = mutableMapOf<String, Any?>()
-                    columns.forEach { colName ->
-                        row[colName] = at(i, colName)
-                    }
-                    other.columns().forEach { colName ->
-                        if (colName != on) {
-                            row[colName] = other.at(j, colName)
-                        }
-                    }
-                    resultRows.add(row)
-                    matched = true
-                }
-            }
-            
-            // 如果没有匹配，仍然添加左表的行，右表列为null
-            if (!matched) {
-                val row = mutableMapOf<String, Any?>()
-                columns.forEach { colName ->
-                    row[colName] = at(i, colName)
-                }
-                other.columns().forEach { colName ->
-                    if (colName != on) {
-                        row[colName] = null
-                    }
-                }
-                resultRows.add(row)
+    private fun joinRows(other: DataFrame, on: String, how: String = "inner"): DataFrame {
+        if (on !in columns) throw IllegalArgumentException("列不存在: $on")
+        if (on !in other.columns()) throw IllegalArgumentException("列不存在: $on")
+
+        val joinType = how.lowercase()
+        if (joinType !in setOf("inner", "left", "right", "outer")) {
+            throw IllegalArgumentException("不支持的连接类型: $how")
+        }
+
+        val leftN = shape().first
+        val rightN = other.shape().first
+        val rightColumns = other.columns()
+        val resultRows = ArrayList<Map<String, Any?>>()
+
+        val rightMap = HashMap<Any, MutableList<Int>>()
+        val rightKeys = arrayOfNulls<Any>(rightN)
+        for (j in 0 until rightN) {
+            val key = other.at(j, on)
+            rightKeys[j] = key
+            if (key != null) {
+                rightMap.getOrPut(key) { ArrayList(1) }.add(j)
             }
         }
-        
+
+        val matchedRight = if (joinType == "outer") BooleanArray(rightN) else null
+
+        // 左表驱动：inner / left / outer
+        if (joinType != "right") {
+            for (i in 0 until leftN) {
+                val key = at(i, on)
+                val matches = if (key == null) null else rightMap[key]
+                if (!matches.isNullOrEmpty()) {
+                    for (j in matches) {
+                        resultRows.add(combinedRow(other, i, j, on))
+                        matchedRight?.set(j, true)
+                    }
+                } else if (joinType == "left" || joinType == "outer") {
+                    resultRows.add(combinedRow(other, i, -1, on))
+                }
+            }
+        }
+
+        // 右表驱动 / 全外连接补右表未匹配行
+        if (joinType == "right" || joinType == "outer") {
+            if (joinType == "right") {
+                val leftMap = HashMap<Any, MutableList<Int>>()
+                for (i in 0 until leftN) {
+                    val key = at(i, on) ?: continue
+                    leftMap.getOrPut(key) { ArrayList(1) }.add(i)
+                }
+                for (j in 0 until rightN) {
+                    val key = rightKeys[j]
+                    val matches = if (key == null) null else leftMap[key]
+                    if (!matches.isNullOrEmpty()) {
+                        for (i in matches) resultRows.add(combinedRow(other, i, j, on))
+                    } else {
+                        resultRows.add(combinedRow(other, -1, j, on))
+                    }
+                }
+            } else {
+                for (j in 0 until rightN) {
+                    if (matchedRight != null && !matchedRight[j]) {
+                        resultRows.add(combinedRow(other, -1, j, on))
+                    }
+                }
+            }
+        }
+
         return DataFrame(resultRows)
     }
-    
-    /**
-     * 右连接
-     */
-    private fun rightJoin(other: DataFrame, on: String): DataFrame {
-        val resultRows = mutableListOf<Map<String, Any?>>()
-        
-        val indexList = index()
-        val otherIndexList = other.index()
-        
-        for (j in otherIndexList.indices) {
-            val otherValue = other.at(j, on)
-            var matched = false
-            
-            for (i in indexList.indices) {
-                val thisValue = at(i, on)
-                if (thisValue == otherValue) {
-                    val row = mutableMapOf<String, Any?>()
-                    columns.forEach { colName ->
-                        row[colName] = at(i, colName)
-                    }
-                    other.columns().forEach { colName ->
-                        if (colName != on) {
-                            row[colName] = other.at(j, colName)
-                        }
-                    }
-                    resultRows.add(row)
-                    matched = true
-                }
+
+    private fun combinedRow(
+        other: DataFrame,
+        leftPos: Int,
+        rightPos: Int,
+        on: String
+    ): Map<String, Any?> {
+        val row = LinkedHashMap<String, Any?>(columns.size + other.columns().size)
+        if (leftPos >= 0) {
+            for (colName in columns) row[colName] = at(leftPos, colName)
+        } else {
+            for (colName in columns) row[colName] = null
+        }
+        if (rightPos >= 0) {
+            if (leftPos < 0) row[on] = other.at(rightPos, on)
+            for (colName in other.columns()) {
+                if (colName != on) row[colName] = other.at(rightPos, colName)
             }
-            
-            // 如果没有匹配，仍然添加右表的行，左表列为null
-            if (!matched) {
-                val row = mutableMapOf<String, Any?>()
-                columns.forEach { colName ->
-                    row[colName] = null
-                }
-                other.columns().forEach { colName ->
-                    if (colName != on) {
-                        row[colName] = other.at(j, colName)
-                    }
-                }
-                resultRows.add(row)
+        } else {
+            for (colName in other.columns()) {
+                if (colName != on) row[colName] = null
             }
         }
-        
-        return DataFrame(resultRows)
+        return row
     }
-    
-    /**
-     * 全外连接
-     */
-    private fun outerJoin(other: DataFrame, on: String): DataFrame {
-        val resultRows = mutableListOf<Map<String, Any?>>()
-        val matchedLeft = mutableSetOf<Int>()
-        val matchedRight = mutableSetOf<Int>()
-        
-        val indexList = index()
-        val otherIndexList = other.index()
-        
-        // 先处理匹配的行
-        for (i in indexList.indices) {
-            val thisValue = at(i, on)
-            for (j in otherIndexList.indices) {
-                val otherValue = other.at(j, on)
-                if (thisValue == otherValue) {
-                    val row = mutableMapOf<String, Any?>()
-                    columns.forEach { colName ->
-                        row[colName] = at(i, colName)
-                    }
-                    other.columns().forEach { colName ->
-                        if (colName != on) {
-                            row[colName] = other.at(j, colName)
-                        }
-                    }
-                    resultRows.add(row)
-                    matchedLeft.add(i)
-                    matchedRight.add(j)
-                }
-            }
-        }
-        
-        // 添加左表未匹配的行
-        for (i in indexList.indices) {
-            if (i !in matchedLeft) {
-                val row = mutableMapOf<String, Any?>()
-                columns.forEach { colName ->
-                    row[colName] = at(i, colName)
-                }
-                other.columns().forEach { colName ->
-                    if (colName != on) {
-                        row[colName] = null
-                    }
-                }
-                resultRows.add(row)
-            }
-        }
-        
-        // 添加右表未匹配的行
-        for (j in otherIndexList.indices) {
-            if (j !in matchedRight) {
-                val row = mutableMapOf<String, Any?>()
-                columns.forEach { colName ->
-                    row[colName] = null
-                }
-                other.columns().forEach { colName ->
-                    if (colName != on) {
-                        row[colName] = other.at(j, colName)
-                    }
-                }
-                resultRows.add(row)
-            }
-        }
-        
-        return DataFrame(resultRows)
-    }
-    
+
     companion object {
         /**
          * 从CSV文件读取数据
          */
+        /**
+         * 从CSV文件读取数据（流式解析，内存占用与文件大小无关）
+         */
         fun readCSV(
-            file: File, 
-            delimiter: String = ",", 
-            header: Boolean = true, 
+            file: File,
+            delimiter: String = ",",
+            header: Boolean = true,
             autoType: Boolean = true,
             encoding: String = "UTF-8",
             skipLines: Int = 0,
             nullValues: List<String> = listOf("", "null", "NULL", "NA", "N/A"),
             trimValues: Boolean = true
         ): DataFrame {
-            if (!file.exists()) {
-                throw IllegalArgumentException("文件不存在: ${file.absolutePath}")
-            }
-            
-            if (!file.canRead()) {
-                throw SecurityException("无法读取文件: ${file.absolutePath}")
-            }
-            
-            val lines = try {
-                file.readLines(charset(encoding))
-            } catch (e: Exception) {
-                throw RuntimeException("读取文件失败: ${e.message}", e)
-            }
-            
-            if (lines.isEmpty()) {
-                return DataFrame(emptyList<Map<String, Any?>>())
-            }
-            
-            // 跳过指定行数
-            val effectiveLines = lines.drop(skipLines)
-            if (effectiveLines.isEmpty()) {
-                return DataFrame(emptyList<Map<String, Any?>>())
-            }
-            
-            val firstLine = effectiveLines.first()
-            val headers: List<String>
-            val dataLines: List<String>
-            
-            if (header) {
-                headers = parseCSVLine(firstLine, delimiter, trimValues)
-                dataLines = effectiveLines.drop(1)
-            } else {
-                // 如果没有表头，使用默认列名
-                val firstLineValues = parseCSVLine(firstLine, delimiter, trimValues)
-                headers = firstLineValues.indices.map { "col$it" }
-                dataLines = effectiveLines
-            }
-            
-            if (headers.isEmpty()) {
-                throw IllegalArgumentException("解析失败: 未找到有效的列名")
-            }
-            
-            // 预先推断每列的数据类型（只使用第一行数据）
-            val columnTypes = mutableMapOf<String, (String) -> Any?>()
-            if (autoType && dataLines.isNotEmpty()) {
-                val firstLineValues = parseCSVLine(dataLines.first(), delimiter, trimValues)
-                val adjustedFirstValues = if (firstLineValues.size < headers.size) {
-                    firstLineValues + List(headers.size - firstLineValues.size) { "" }
-                } else if (firstLineValues.size > headers.size) {
-                    firstLineValues.take(headers.size)
-                } else {
-                    firstLineValues
-                }
-                
-                headers.forEachIndexed { index, header ->
-                    val firstValue = adjustedFirstValues.getOrNull(index) ?: ""
-                    // 为每列创建一个转换函数，基于第一个值推断类型
-                    val inferredType = inferTypeFromSample(firstValue, nullValues)
-                    columnTypes[header] = { value ->
-                        if (value in nullValues) null 
-                        else convertValueWithType(value, inferredType)
-                    }
-                }
-            }
-            
-            // 解析数据行
-            val rows = dataLines.mapIndexed { lineIndex, line ->
-                try {
-                    val values = parseCSVLine(line, delimiter, trimValues)
-                    
-                    // 处理列数不匹配的情况
-                    val adjustedValues = if (values.size < headers.size) {
-                        // 补充空值
-                        values + List(headers.size - values.size) { "" }
-                    } else if (values.size > headers.size) {
-                        // 截断多余列
-                        values.take(headers.size)
-                    } else {
-                        values
-                    }
-                    
-                    val rowMap = headers.zip(adjustedValues).toMap()
-                    
-                    if (autoType) {
-                        // 使用预先推断的类型进行转换
-                        rowMap.mapValues { (key, value) ->
-                            val converter = columnTypes[key]
-                            if (converter != null) {
-                                converter(value)
-                            } else {
-                                // 如果没有推断出类型，使用原始值
-                                if (value in nullValues) null else value
-                            }
-                        }
-                    } else {
-                        // 不进行类型转换，但处理空值
-                        rowMap.mapValues { (_, value) ->
-                            if (value in nullValues) null else value
-                        }
-                    }
-                } catch (e: Exception) {
-                    throw RuntimeException("解析第 ${lineIndex + skipLines + (if (header) 2 else 1)} 行失败: $line", e)
-                }
-            }
-            
-            // 如果没有数据行但有表头，创建一个空DataFrame但保留列信息
-            if (rows.isEmpty()) {
-                // 创建空的DataFrame，但保留列名
-                val emptyData = headers.associateWith { emptyList<Any?>() }
-                return DataFrame(emptyData)
-            }
-            
-            return DataFrame(rows)
+            return CsvReader.read(
+                file,
+                CsvReader.Options(
+                    delimiter = delimiter,
+                    header = header,
+                    autoType = autoType,
+                    encoding = encoding,
+                    skipLines = skipLines,
+                    nullValues = nullValues,
+                    trimValues = trimValues
+                )
+            )
         }
-        
+
+        /** 库内部使用：从列式 Series 直接组装 DataFrame，避免再次转置。 */
+        internal fun fromSeries(
+            columnOrder: List<String>,
+            seriesMap: Map<String, Series<Any>>
+        ): DataFrame {
+            return DataFrame(seriesMap, columnOrder)
+        }
+
         /**
          * 解析单行CSV数据，支持引号内的分隔符
          */
@@ -2219,22 +1227,44 @@ class DataFrame {
      * 导出为CSV文件
      */
     fun toCSV(file: File) {
-        FileWriter(file).use { writer ->
-            // 写入表头
-            writer.write(columns.joinToString(","))
-            writer.write("\n")
-            
-            // 写入数据
-            val indexList = index()
-            for (i in indexList.indices) {
-                val row = columns.map { colName ->
-                    data[colName]!![i]?.toString() ?: ""
+        file.bufferedWriter(Charsets.UTF_8).use { writer ->
+            writer.write(columns.joinToString(",") { escapeCsvField(it) })
+            writer.newLine()
+
+            val n = shape().first
+            val line = StringBuilder(128)
+            for (i in 0 until n) {
+                line.setLength(0)
+                for (c in columns.indices) {
+                    if (c > 0) line.append(',')
+                    val value = data[columns[c]]!![i]
+                    if (value != null) line.append(escapeCsvField(value.toString()))
                 }
-                writer.write(row.joinToString(","))
-                writer.write("\n")
+                writer.write(line.toString())
+                writer.newLine()
             }
         }
     }
+
+    private fun escapeCsvField(value: String): String {
+        var needsQuote = false
+        for (ch in value) {
+            if (ch == ',' || ch == '"' || ch == '\n' || ch == '\r') {
+                needsQuote = true
+                break
+            }
+        }
+        if (!needsQuote) return value
+        return buildString(value.length + 8) {
+            append('"')
+            for (ch in value) {
+                if (ch == '"') append('"')
+                append(ch)
+            }
+            append('"')
+        }
+    }
+
 }
 
 /**
@@ -2245,76 +1275,95 @@ class GroupBy(
     private val groupCols: List<String>
 ) {
     /**
-     * 聚合操作
+     * 聚合操作：一次哈希分组 + 单次扫描，复杂度 O(n × 非分组列数)。
      */
     fun agg(operations: Map<String, String>): DataFrame {
-        // 获取分组键的唯一值
-        val groupKeyValues = mutableSetOf<List<Any?>>()
-        
-        val indexList = df.index()
-        for (rowIndex in indexList.indices) {
-            val key = groupCols.map { colName -> df.at(rowIndex, colName) }
-            groupKeyValues.add(key)
+        if (groupCols.any { it !in df.columns() }) {
+            throw IllegalArgumentException("分组列不存在: $groupCols")
         }
-        
-        // 对每个分组进行聚合
-        val resultRows = mutableListOf<Map<String, Any?>>()
-        
-        for (keyValue in groupKeyValues) {
-            // 筛选出该分组的所有行
-            val groupRows = mutableListOf<Map<String, Any?>>()
-            for (rowIndex in indexList.indices) {
-                val rowKey = groupCols.map { colName -> df.at(rowIndex, colName) }
-                if (rowKey == keyValue) {
-                    // 将 Series<Any> 转换为 Map<String, Any?>
-                    val row = df.iloc(rowIndex)
-                    val rowValues = row.mapValues { (_, series) -> series?.get(0) }
-                    groupRows.add(rowValues)
+
+        val n = df.shape().first
+        val positionsByKey = LinkedHashMap<List<Any?>, MutableList<Int>>()
+        for (i in 0 until n) {
+            val key = groupCols.map { df.at(i, it) }
+            positionsByKey.getOrPut(key) { ArrayList() }.add(i)
+        }
+
+        val firstOp = operations.values.firstOrNull()?.lowercase()
+        val nonGroupColumns = df.columns().filter { it !in groupCols }
+        val resultRows = ArrayList<Map<String, Any?>>(positionsByKey.size)
+
+        for ((key, positions) in positionsByKey) {
+            val row = LinkedHashMap<String, Any?>(groupCols.size + nonGroupColumns.size)
+            groupCols.forEachIndexed { index, colName -> row[colName] = key[index] }
+            if (firstOp != null) {
+                for (colName in nonGroupColumns) {
+                    row[colName] = aggregate(df[colName], positions, firstOp)
                 }
             }
-            
-            // 创建临时DataFrame进行聚合
-            val tempDF = DataFrame(groupRows)
-            val aggResult = tempDF.agg(operations)
-            
-            // 添加分组键到结果
-            val resultRow = mutableMapOf<String, Any?>()
-            groupCols.forEachIndexed { i, colName ->
-                resultRow[colName] = keyValue[i]
-            }
-            // 添加聚合结果
-            aggResult.columns().forEach { colName ->
-                if (colName !in groupCols) {
-                    resultRow[colName] = aggResult.iloc(0)[colName]
-                }
-            }
-            
-            resultRows.add(resultRow)
+            resultRows.add(row)
         }
-        
+
         return DataFrame(resultRows)
     }
-    
+
+    private fun aggregate(series: Series<Any>, positions: List<Int>, op: String): Any? {
+        var count = 0
+        var sum = 0.0
+        var numeric: Boolean? = null
+        var minNumber = Double.POSITIVE_INFINITY
+        var maxNumber = Double.NEGATIVE_INFINITY
+        var minText: String? = null
+        var maxText: String? = null
+
+        for (p in positions) {
+            val value = series[p] ?: continue
+            count++
+            if (numeric == null) numeric = value is Number
+            if (numeric == true) {
+                val d = (value as Number).toDouble()
+                sum += d
+                if (d < minNumber) minNumber = d
+                if (d > maxNumber) maxNumber = d
+            } else {
+                val text = value.toString()
+                if (minText == null || text < minText) minText = text
+                if (maxText == null || text > maxText) maxText = text
+            }
+        }
+
+        return when (op) {
+            "count" -> count
+            "sum" -> if (numeric == true && count > 0) sum else null
+            "mean" -> if (numeric == true && count > 0) sum / count else null
+            "min" -> when {
+                count == 0 -> null
+                numeric == true -> minNumber
+                else -> minText
+            }
+            "max" -> when {
+                count == 0 -> null
+                numeric == true -> maxNumber
+                else -> maxText
+            }
+            else -> throw IllegalArgumentException("不支持的聚合操作: $op")
+        }
+    }
+
     /**
      * 求和
      */
-    fun sum(): DataFrame {
-        return agg(groupCols.associateWith { "sum" })
-    }
-    
+    fun sum(): DataFrame = agg(groupCols.associateWith { "sum" })
+
     /**
      * 平均值
      */
-    fun mean(): DataFrame {
-        return agg(groupCols.associateWith { "mean" })
-    }
-    
+    fun mean(): DataFrame = agg(groupCols.associateWith { "mean" })
+
     /**
      * 计数
      */
-    fun count(): DataFrame {
-        return agg(groupCols.associateWith { "count" })
-    }
+    fun count(): DataFrame = agg(groupCols.associateWith { "count" })
 }
 
 

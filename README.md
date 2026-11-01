@@ -21,6 +21,17 @@ Andas SDK (Android Data Analysis System) 是一个专为 Android 平台设计的
 - 🔧 **混合架构**: Kotlin + C++ + OpenMP，智能降级
 - 🧵 **异步支持**: 完整的异步操作和线程池管理
 - 🌍 **中文文档**: 完整的中文技术文档
+- 🚀 **流式 CSV**: 列式解析，大文件不 OOM；37MB / 20 万行 × 15 列约 1.6s
+- ⚡ **列式计算**: 共享范围索引、原始类型数组、单次遍历统计、哈希分组/连接
+
+> 文档站点（GitHub Pages 默认域名）：<https://truewangsyutung.github.io/Andas/>
+
+### 最新性能优化（0.1.2）
+
+CSV 读取已从“整文件读入 → 每行 Map → 转置”重构为**流式列式解析**，
+统计、排序、筛选、分组、连接等操作也改为单次遍历或哈希算法。
+详见 [CHANGELOG_0.1.2.md](CHANGELOG_0.1.2.md)；
+完整的实验数据、图表与复现脚本见 [BENCHMARK_REPORT.md](BENCHMARK_REPORT.md) 和 [bench/README.md](bench/README.md)。
 
 ## 快速开始
 

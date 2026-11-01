@@ -42,7 +42,7 @@ object NativeMath {
             // 测试一个简单的调用
             val testArray = doubleArrayOf(1.0, 2.0, 3.0)
             sumDoubleArray(testArray) == 6.0
-        } catch (e: Exception) {
+        } catch (t: Throwable) {
             false
         }
     }

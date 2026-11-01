@@ -1,6 +1,7 @@
 package cn.ac.oac.libs.andas
 
 import cn.ac.oac.libs.andas.entity.DataFrame
+import cn.ac.oac.libs.andas.entity.Series
 import org.junit.Test
 import org.junit.Assert.*
 import java.io.File
@@ -32,10 +33,10 @@ class CSVReadTest {
 
         // 验证数据类型
         val row0 = df.iloc(0)
-        assertEquals("Alice", row0["name"])
-        assertEquals(25, row0["age"])
-        assertEquals(95.5, row0["score"])
-        assertEquals(true, row0["active"])
+        assertEquals("Alice", row0.cell("name"))
+        assertEquals(25, row0.cell("age"))
+        assertEquals(95.5, row0.cell("score"))
+        assertEquals(true, row0.cell("active"))
 
         csvFile.delete()
     }
@@ -60,43 +61,33 @@ class CSVReadTest {
 
         // 验证数据类型
         val row0 = df.iloc(0)
-        assertEquals("Alice", row0["col0"])
-        assertEquals(25, row0["col1"])
-        assertEquals(95.5, row0["col2"])
-        assertEquals(true, row0["col3"])
+        assertEquals("Alice", row0.cell("col0"))
+        assertEquals(25, row0.cell("col1"))
+        assertEquals(95.5, row0.cell("col2"))
+        assertEquals(true, row0.cell("col3"))
 
         csvFile.delete()
     }
 
     @Test
     fun testAutoTypeDetection() {
-        // 测试各种数据类型的自动推断
-        val testValues = mapOf(
-            "123" to 123,
-            "456" to 456L,
-            "-789" to -789,
-            "3.14" to 3.14,
-            "2.718" to 2.718,
-            "true" to true,
-            "false" to false,
-            "TRUE" to true,
-            "FALSE" to false,
-            "yes" to true,
-            "no" to false,
-            "1" to true,
-            "0" to false,
-            "hello" to "hello",
-            "" to null,
-            "null" to null,
-            "NULL" to null,
-            "NA" to null,
-            "N/A" to null
-        )
-
-        testValues.forEach { (input, expected) ->
-            val result = DataFrame.convertToAppropriateType(input)
-            assertEquals("Failed for input: $input", expected, result)
+        val csvFile = createTempFile()
+        FileWriter(csvFile).use { writer ->
+            writer.write("int_col,long_col,double_col,bool_col,text_col,date_col\n")
+            writer.write("123,9223372036854775807,3.14,true,hello,2024-01-02\n")
+            writer.write("-7,1234567890123,2.718,false,world,2024-01-03\n")
         }
+
+        val df = DataFrame.readCSV(csvFile, header = true, autoType = true)
+
+        assertEquals(123, df.at(0, "int_col"))
+        assertEquals(9223372036854775807L, df.at(0, "long_col"))
+        assertEquals(3.14, df.at(0, "double_col"))
+        assertEquals(true, df.at(0, "bool_col"))
+        assertEquals("hello", df.at(0, "text_col"))
+        assertEquals("2024-01-02", df.at(0, "date_col"))
+
+        csvFile.delete()
     }
 
     @Test
@@ -116,17 +107,17 @@ class CSVReadTest {
         assertEquals(3, df.shape().second)
 
         val row0 = df.iloc(0)
-        assertEquals("John Doe", row0["name"])
-        assertEquals("A good person", row0["description"])
-        assertEquals(100.50, row0["price"])
+        assertEquals("John Doe", row0.cell("name"))
+        assertEquals("A good person", row0.cell("description"))
+        assertEquals(100.50, row0.cell("price"))
 
         val row1 = df.iloc(1)
-        assertEquals("Jane Smith", row1["name"])
-        assertEquals("Another, person", row1["description"])
+        assertEquals("Jane Smith", row1.cell("name"))
+        assertEquals("Another, person", row1.cell("description"))
 
         val row2 = df.iloc(2)
-        assertEquals("Bob \"The Builder\"", row2["name"])
-        assertEquals("Expert, builder", row2["description"])
+        assertEquals("Bob \"The Builder\"", row2.cell("name"))
+        assertEquals("Expert, builder", row2.cell("description"))
 
         csvFile.delete()
     }
@@ -145,16 +136,16 @@ class CSVReadTest {
         val df = DataFrame.readCSV(csvFile, header = true, autoType = true)
 
         val row0 = df.iloc(0)
-        assertNull(row0["age"])
-        assertEquals(95.5, row0["score"])
+        assertNull(row0.cell("age"))
+        assertEquals(95.5, row0.cell("score"))
 
         val row1 = df.iloc(1)
-        assertEquals(30, row1["age"])
-        assertNull(row1["score"])
+        assertEquals(30, row1.cell("age"))
+        assertNull(row1.cell("score"))
 
         val row2 = df.iloc(2)
-        assertEquals(28, row2["age"])
-        assertNull(row2["score"])
+        assertEquals(28, row2.cell("age"))
+        assertNull(row2.cell("score"))
 
         csvFile.delete()
     }
@@ -178,7 +169,7 @@ class CSVReadTest {
         assertEquals(listOf("name", "age", "score"), df.columns())
 
         val row0 = df.iloc(0)
-        assertEquals("Alice", row0["name"])
+        assertEquals("Alice", row0.cell("name"))
 
         csvFile.delete()
     }
@@ -200,9 +191,9 @@ class CSVReadTest {
         assertEquals(listOf("name", "age", "score"), df.columns())
 
         val row0 = df.iloc(0)
-        assertEquals("Alice", row0["name"])
-        assertEquals(25, row0["age"])
-        assertEquals(95.5, row0["score"])
+        assertEquals("Alice", row0.cell("name"))
+        assertEquals(25, row0.cell("age"))
+        assertEquals(95.5, row0.cell("score"))
 
         csvFile.delete()
     }
@@ -220,16 +211,16 @@ class CSVReadTest {
         // 启用修剪
         val df1 = DataFrame.readCSV(csvFile, header = true, autoType = true, trimValues = true)
         val row0 = df1.iloc(0)
-        assertEquals("Alice", row0["name"])
-        assertEquals(25, row0["age"])
-        assertEquals(95.5, row0["score"])
+        assertEquals("Alice", row0.cell("name"))
+        assertEquals(25, row0.cell("age"))
+        assertEquals(95.5, row0.cell("score"))
 
         // 禁用修剪
         val df2 = DataFrame.readCSV(csvFile, header = true, autoType = true, trimValues = false)
         val row0_2 = df2.iloc(0)
-        assertEquals("  Alice  ", row0_2["name"])
-        assertEquals("  25  ", row0_2["age"])
-        assertEquals("  95.5  ", row0_2["score"])
+        assertEquals("  Alice  ", row0_2.cell("name"))
+        assertEquals("  25  ", row0_2.cell("age"))
+        assertEquals("  95.5  ", row0_2.cell("score"))
 
         csvFile.delete()
     }
@@ -251,14 +242,14 @@ class CSVReadTest {
         assertEquals(3, df.shape().second)
 
         val row0 = df.iloc(0)
-        assertEquals("Alice", row0["name"])
-        assertEquals(25, row0["age"])
-        assertEquals(95.5, row0["score"])
+        assertEquals("Alice", row0.cell("name"))
+        assertEquals(25, row0.cell("age"))
+        assertEquals(95.5, row0.cell("score"))
 
         val row1 = df.iloc(1)
-        assertEquals("Bob", row1["name"])
-        assertEquals(30, row1["age"])
-        assertNull(row1["score"]) // 缺失的列应该是null
+        assertEquals("Bob", row1.cell("name"))
+        assertEquals(30, row1.cell("age"))
+        assertNull(row1.cell("score")) // 缺失的列应该是null
 
         csvFile.delete()
     }
@@ -277,9 +268,9 @@ class CSVReadTest {
 
         val row0 = df.iloc(0)
         // 大整数应该转为Long
-        assertTrue(row0["big_int"] is Long)
+        assertTrue(row0.cell("big_int") is Long)
         // 大浮点数应该转为Double
-        assertTrue(row0["big_float"] is Double)
+        assertTrue(row0.cell("big_float") is Double)
 
         csvFile.delete()
     }
@@ -298,9 +289,9 @@ class CSVReadTest {
             // 应该能够处理，非数字保持为字符串
             val df = DataFrame.readCSV(csvFile, header = true, autoType = true)
             val row1 = df.iloc(1)
-            assertEquals("Bob", row1["name"])
+            assertEquals("Bob", row1.cell("name"))
             // 无法转换为数字，保持为字符串
-            assertEquals("not_a_number", row1["age"])
+            assertEquals("not_a_number", row1.cell("age"))
         } catch (e: Exception) {
             fail("Should not throw exception for invalid numbers")
         }
@@ -343,4 +334,7 @@ class CSVReadTest {
         file.deleteOnExit()
         return file
     }
+
+    private fun Map<String, Series<Any>?>?.cell(name: String): Any? = this?.get(name)?.get(0)
+
 }

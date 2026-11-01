@@ -1,6 +1,8 @@
 package cn.ac.oac.libs.andas
 
 import cn.ac.oac.libs.andas.core.NativeMath
+import org.junit.Before
+import org.junit.Assume
 import org.junit.Test
 import org.junit.Assert.*
 
@@ -9,6 +11,16 @@ import org.junit.Assert.*
  * 基于large_dataset.csv数据格式进行测试
  */
 class NativeMathTest {
+
+    @Before
+    fun requireNativeLibrary() {
+        val available = try {
+            NativeMath.isAvailable()
+        } catch (t: Throwable) {
+            false
+        }
+        Assume.assumeTrue("原生库仅在 Android 设备/模拟器上可用", available)
+    }
 
     @Test
     fun testMultiplyDoubleArray() {

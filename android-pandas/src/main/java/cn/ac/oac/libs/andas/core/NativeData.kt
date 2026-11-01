@@ -43,7 +43,7 @@ object NativeData {
             val testArray = doubleArrayOf(1.0, 2.0, Double.NaN, 4.0)
             val nullIndices = findNullIndices(testArray)
             nullIndices.size == 1 && nullIndices[0] == 2
-        } catch (e: Exception) {
+        } catch (t: Throwable) {
             false
         }
     }

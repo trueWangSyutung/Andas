@@ -33,7 +33,7 @@ object BatchCSVPerformanceExperiment {
 
     /**
      * 实验1: 任务完成率对比
-     * 传统模式应因OOM而失败，分批模式应成功完成
+     * 流式解析后传统模式也能完成；分批模式用于把峰值内存控制在单批规模
      */
     private fun taskCompletionRateExperiment(context: Context): String {
         val result = StringBuilder()
@@ -107,7 +107,7 @@ object BatchCSVPerformanceExperiment {
         }
         
         result.append("📈 实验结论:\n")
-        result.append("• 传统模式在大数据量下会因OOM失败\n")
+        result.append("• 流式解析已解决传统一次性读取的 OOM 问题\n")
         result.append("• 分批模式能稳定完成所有测试\n")
         result.append("• 验证了分批处理的内存优势\n")
         result.append("• 注意：为避免ANR，测试数据已适当缩小\n")
@@ -191,7 +191,7 @@ object BatchCSVPerformanceExperiment {
         result.append("📈 实验结论:\n")
         result.append("• 分批处理内存占用与批次大小成正比\n")
         result.append("• 峰值内存得到有效控制\n")
-        result.append("• 避免了传统模式的内存爆炸问题\n")
+        result.append("• 分批处理把峰值内存控制在单批规模\n")
         result.append("• 内存使用呈现稳定的线性增长\n")
         result.append("• 注意：为避免ANR，测试数据已适当缩小\n")
         
@@ -376,7 +376,7 @@ object BatchCSVPerformanceExperiment {
             result.append("  单列求和: ${if (isConsistent) "✅ 一致" else "❌ 不一致"}")
             result.append(" (差值: ${"%.8f".format(diff)})\n")
         } catch (e: OutOfMemoryError) {
-            result.append("  单列求和: ⚠️ OOM无法校验\n")
+            result.append("  单列求和: ⚠️ 读取失败，无法校验\n")
             Log.e("BatchCSVExperiment", "OOM in single column sum check", e)
         } catch (e: Exception) {
             result.append("  单列求和: ⚠️ 无法校验\n")
@@ -401,7 +401,7 @@ object BatchCSVPerformanceExperiment {
             result.append("  多列求和: ${if (isConsistent) "✅ 一致" else "❌ 不一致"}")
             result.append(" (差值: ${"%.8f".format(diff1)}, ${"%.8f".format(diff2)})\n")
         } catch (e: OutOfMemoryError) {
-            result.append("  多列求和: ⚠️ OOM无法校验\n")
+            result.append("  多列求和: ⚠️ 读取失败，无法校验\n")
             Log.e("BatchCSVExperiment", "OOM in multiple columns sum check", e)
         } catch (e: Exception) {
             result.append("  多列求和: ⚠️ 无法校验\n")
@@ -428,7 +428,7 @@ object BatchCSVPerformanceExperiment {
             result.append("  空值处理: ${if (isConsistent) "✅ 一致" else "❌ 不一致"}")
             result.append(" (差值: ${"%.8f".format(diff)})\n")
         } catch (e: OutOfMemoryError) {
-            result.append("  空值处理: ⚠️ OOM无法校验\n")
+            result.append("  空值处理: ⚠️ 读取失败，无法校验\n")
             Log.e("BatchCSVExperiment", "OOM in null value handling check", e)
         } catch (e: Exception) {
             result.append("  空值处理: ⚠️ 无法校验\n")
@@ -454,7 +454,7 @@ object BatchCSVPerformanceExperiment {
             
             result.append("  批次大小: ${if (allConsistent) "✅ 一致" else "❌ 不一致"}\n")
         } catch (e: OutOfMemoryError) {
-            result.append("  批次大小: ⚠️ OOM无法校验\n")
+            result.append("  批次大小: ⚠️ 读取失败，无法校验\n")
             Log.e("BatchCSVExperiment", "OOM in batch size consistency check", e)
         } catch (e: Exception) {
             result.append("  批次大小: ⚠️ 无法校验\n")
@@ -637,7 +637,7 @@ object BatchCSVPerformanceExperiment {
         result.append("• 内存占用稳定可控\n")
         result.append("• 吞吐量表现优秀\n")
         result.append("• 一致性完全保证\n")
-        result.append("• 传统模式在大数据量下不可用\n")
+        result.append("• 传统模式在超大文件上仍有较高内存峰值，建议使用分批模式\n")
         result.append("• 分批模式是生产环境的唯一选择\n")
         result.append("• 注意：为避免ANR，测试数据已适当缩小\n")
         
@@ -841,7 +841,7 @@ object BatchCSVPerformanceExperiment {
         }
         
         result.append("🎯 实验总结:\n")
-        result.append("1. 传统模式在大数据量下因OOM失败\n")
+        result.append("1. 流式解析已解决传统模式的大文件 OOM 问题\n")
         result.append("2. 分批模式内存占用稳定可控\n")
         result.append("3. 执行效率优秀，吞吐量高\n")
         result.append("4. 结果一致性完全保证\n")

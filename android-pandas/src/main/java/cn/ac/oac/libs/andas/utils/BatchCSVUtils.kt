@@ -1,16 +1,10 @@
 package cn.ac.oac.libs.andas.utils
 
 import cn.ac.oac.libs.andas.entity.DataFrame
-import cn.ac.oac.libs.andas.entity.Series
 import cn.ac.oac.libs.andas.core.NativeBatch
-import cn.ac.oac.libs.andas.core.NativeData
 import cn.ac.oac.libs.andas.core.NativeMath
 import cn.ac.oac.libs.andas.types.AndaTypes
-import cn.ac.oac.libs.andas.entity.DataFrameIO
-import java.io.BufferedReader
-import java.io.File
 import java.io.InputStream
-import java.io.InputStreamReader
 import kotlin.math.sqrt
 
 /**
@@ -59,226 +53,23 @@ object BatchCSVUtils {
         nullValues: List<String> = listOf("", "null", "NULL", "NA", "N/A"),
         trimValues: Boolean = true
     ) {
-        if (batchSize == 0){
-            throw IllegalArgumentException("Batch is Non-Zero!")
+        if (batchSize <= 0) {
+            throw IllegalArgumentException("batchSize 必须大于 0")
         }
-        val reader = BufferedReader(InputStreamReader(inputStream, encoding))
-        
-        try {
-            // 跳过指定行数
-            var linesSkipped = 0
-            while (linesSkipped < skipLines) {
-                val line = reader.readLine()
-                if (line == null) {
-                    return // 文件为空或跳过行数超过文件行数
-                }
-                linesSkipped++
-            }
-            
-            // 读取第一行（表头或第一行数据）
-            val firstLine = reader.readLine()
-            if (firstLine == null) {
-                return // 文件为空
-            }
-            
-            // 解析表头
-            val headers: List<String>
-            if (header) {
-                headers = DataFrame.parseCSVLine(firstLine, delimiter, trimValues)
-            } else {
-                val firstLineValues = DataFrame.parseCSVLine(firstLine, delimiter, trimValues)
-                headers = firstLineValues.indices.map { "col$it" }
-            }
-            
-            if (headers.isEmpty()) {
-                throw IllegalArgumentException("解析失败: 未找到有效的列名")
-            }
-            
-            // 推断列类型（使用第一行数据）
-            val columnTypes = mutableMapOf<String, (String) -> Any?>()
-            if (autoType) {
-                val firstDataRow = if (header) {
-                    reader.readLine()
-                } else {
-                    firstLine
-                }
-                
-                if (firstDataRow != null) {
-                    val firstLineValues = DataFrame.parseCSVLine(firstDataRow, delimiter, trimValues)
-                    val adjustedFirstValues = if (firstLineValues.size < headers.size) {
-                        firstLineValues + List(headers.size - firstLineValues.size) { "" }
-                    } else if (firstLineValues.size > headers.size) {
-                        firstLineValues.take(headers.size)
-                    } else {
-                        firstLineValues
-                    }
-                    
-                    headers.forEachIndexed { index, headerName ->
-                        val firstValue = adjustedFirstValues.getOrNull(index) ?: ""
-                        val inferredType = DataFrame.inferTypeFromSample(firstValue, nullValues)
-                        columnTypes[headerName] = { value ->
-                            if (value in nullValues) null
-                            else DataFrame.convertValueWithType(value, inferredType)
-                        }
-                    }
-                    
-                   
-                    processBatchLineByLine(reader, headers, batchSize, callback, delimiter, autoType, columnTypes, nullValues, trimValues)
-                    return
-                }
-            }
-            
-            // 如果没有启用类型推断，直接开始逐行处理
-            if (!autoType) {
-                processBatchLineByLine(reader, headers, batchSize, callback, delimiter, autoType, columnTypes, nullValues, trimValues)
-            }
-            
-        } catch (e: Exception) {
-            throw RuntimeException("读取数据流失败: ${e.message}", e)
-        } finally {
-            reader.close()
-        }
-    }
-
-    /**
-     * 重新创建流进行分批处理（用于类型推断场景）
-     */
-    private fun readCSVBatchWithRecreate(
-        inputStream: InputStream,
-        batchSize: Int = 1000,
-        callback: (DataFrame) -> Unit,
-        delimiter: String = ",",
-        header: Boolean = true,
-        autoType: Boolean = true,
-        encoding: String = "UTF-8",
-        skipLines: Int = 0,
-        nullValues: List<String> = listOf("", "null", "NULL", "NA", "N/A"),
-        trimValues: Boolean = true
-    ) {
-        // 重新创建reader（因为之前的reader已经关闭）
-        val reader = BufferedReader(InputStreamReader(inputStream, encoding))
-        
-        try {
-            // 跳过指定行数
-            var linesSkipped = 0
-            while (linesSkipped < skipLines) {
-                val line = reader.readLine()
-                if (line == null) return
-                linesSkipped++
-            }
-            
-            // 读取第一行
-            val firstLine = reader.readLine()
-            if (firstLine == null) return
-            
-            // 解析表头
-            val headers: List<String>
-            if (header) {
-                headers = DataFrame.parseCSVLine(firstLine, delimiter, trimValues)
-            } else {
-                val firstLineValues = DataFrame.parseCSVLine(firstLine, delimiter, trimValues)
-                headers = firstLineValues.indices.map { "col$it" }
-            }
-            
-            // 推断类型（使用第一行数据）
-            val columnTypes = mutableMapOf<String, (String) -> Any?>()
-            if (autoType) {
-                val firstDataRow = if (header) reader.readLine() else firstLine
-                if (firstDataRow != null) {
-                    val firstLineValues = DataFrame.parseCSVLine(firstDataRow, delimiter, trimValues)
-                    val adjustedFirstValues = if (firstLineValues.size < headers.size) {
-                        firstLineValues + List(headers.size - firstLineValues.size) { "" }
-                    } else if (firstLineValues.size > headers.size) {
-                        firstLineValues.take(headers.size)
-                    } else {
-                        firstLineValues
-                    }
-                    
-                    headers.forEachIndexed { index, headerName ->
-                        val firstValue = adjustedFirstValues.getOrNull(index) ?: ""
-                        val inferredType = DataFrame.inferTypeFromSample(firstValue, nullValues)
-                        columnTypes[headerName] = { value ->
-                            if (value in nullValues) null
-                            else DataFrame.convertValueWithType(value, inferredType)
-                        }
-                    }
-                }
-            }
-            
-            // 开始逐行处理
-            processBatchLineByLine(reader, headers, batchSize, callback, delimiter, autoType, columnTypes, nullValues, trimValues)
-            
-        } catch (e: Exception) {
-            throw RuntimeException("读取数据流失败: ${e.message}", e)
-        } finally {
-            reader.close()
-        }
-    }
-
-    /**
-     * 逐行处理批次数据 - 真正的流式处理
-     */
-    private fun processBatchLineByLine(
-        reader: BufferedReader,
-        headers: List<String>,
-        batchSize: Int,
-        callback: (DataFrame) -> Unit,
-        delimiter: String,
-        autoType: Boolean,
-        columnTypes: Map<String, (String) -> Any?>,
-        nullValues: List<String>,
-        trimValues: Boolean
-    ) {
-        var currentBatch = mutableListOf<Map<String, Any?>>()
-        
-        reader.useLines { lines ->
-            for (line in lines) {
-                try {
-                    val values = DataFrame.parseCSVLine(line, delimiter, trimValues)
-                    
-                    // 处理列数不匹配的情况
-                    val adjustedValues = if (values.size < headers.size) {
-                        values + List(headers.size - values.size) { "" }
-                    } else if (values.size > headers.size) {
-                        values.take(headers.size)
-                    } else {
-                        values
-                    }
-                    
-                    val rowMap = headers.zip(adjustedValues).toMap()
-                    
-                    val processedRow = if (autoType) {
-                        rowMap.mapValues { (key, value) ->
-                            val converter = columnTypes[key]
-                            if (converter != null) {
-                                converter(value)
-                            } else {
-                                if (value in nullValues) null else value
-                            }
-                        }
-                    } else {
-                        rowMap.mapValues { (_, value) ->
-                            if (value in nullValues) null else value
-                        }
-                    }
-                    
-                    currentBatch.add(processedRow)
-                    
-                    // 当批次达到指定大小时，调用回调函数
-                    if (currentBatch.size >= batchSize) {
-                        callback(DataFrame(currentBatch))
-                        currentBatch.clear()
-                    }
-                } catch (e: Exception) {
-                    throw RuntimeException("解析行失败: $line", e)
-                }
-            }
-        }
-        
-        // 处理剩余数据
-        if (currentBatch.isNotEmpty()) {
-            callback(DataFrame(currentBatch))
-        }
+        cn.ac.oac.libs.andas.entity.CsvReader.readBatches(
+            inputStream,
+            batchSize,
+            cn.ac.oac.libs.andas.entity.CsvReader.Options(
+                delimiter = delimiter,
+                header = header,
+                autoType = autoType,
+                encoding = encoding,
+                skipLines = skipLines,
+                nullValues = nullValues,
+                trimValues = trimValues
+            ),
+            callback
+        )
     }
 
     /**

@@ -1,12 +1,10 @@
 package cn.ac.oac.libs.andas.entity
 
-import android.util.Log
 import cn.ac.oac.libs.andas.types.AndaTypes
 import cn.ac.oac.libs.andas.types.typeName
 import cn.ac.oac.libs.andas.core.NativeMath
-import cn.ac.oac.libs.andas.core.NativeData
+import java.util.AbstractList
 import cn.ac.oac.libs.andas.core.NativeBatch
-import java.util.*
 
 /**
  * Series 类似于一维数组，可以存储任何数据类型，并通过标签（索引）访问元素
@@ -14,13 +12,55 @@ import java.util.*
  *
  * @param T 数据类型
  */
-class Series<T> {
+class Series<T> private constructor(
+    rawData: List<T?>,
+    rawIndex: List<Any>?,
+    name: String?,
+    dtype: AndaTypes?,
+    copyData: Boolean,
+    validate: Boolean
+) {
     private var data: List<T?>
     private var index: List<Any> // 只能是 Int 或 String
     private var name: String?
     private var dtype: AndaTypes?
-    // 添加索引到位置的映射，用于快速查找
+    // 索引到位置的映射改为惰性构建：绝大多数计算都按位置访问，不需要该映射。
     private var indexToPosition: Map<Any, Int>? = null
+
+    // ==================== 列式原始类型存储 ====================
+    // CSV 等批量读取路径可以直接存储 DoubleArray/LongArray/IntArray/BooleanArray，
+    // 避免为每个单元格创建装箱对象，显著降低大文件的内存占用。
+    // 当这些字段非空时，data 是一个按需装箱的只读视图。
+    internal var doubleStorage: DoubleArray? = null
+        private set
+    internal var longStorage: LongArray? = null
+        private set
+    internal var intStorage: IntArray? = null
+        private set
+    internal var boolStorage: BooleanArray? = null
+        private set
+    // true 表示该位置有值；仅当列中存在空值时才创建
+    internal var presenceMask: BooleanArray? = null
+        private set
+
+    init {
+        this.data = if (copyData) rawData.toList() else rawData
+        val rawIndex = rawIndex ?: RangeIndexList(this.data.size)
+
+        // 验证索引类型：只能是Int或String（共享的范围索引天然合法，无需逐项检查）
+        if (validate && rawIndex !is RangeIndexList) {
+            validateIndexType(rawIndex)
+        }
+
+        this.index = rawIndex
+        this.name = name
+        this.dtype = dtype ?: if (this.data.isNotEmpty()) guessDtype(this.data.first()) else null
+
+        // 验证索引和数据长度是否一致
+        if (this.index.size != this.data.size) {
+            throw IllegalArgumentException("Index和Data的长度必须一致")
+        }
+    }
 
     /**
      * 构造函数 - 通过列表数据创建Series
@@ -35,24 +75,7 @@ class Series<T> {
         index: List<Any>? = null,
         name: String? = null,
         dtype: AndaTypes? = null
-    ) {
-        this.data = data.toList()
-        val rawIndex = index ?: (0 until data.size).toList()
-        
-        // 验证索引类型：只能是Int或String
-        validateIndexType(rawIndex)
-        
-        this.index = rawIndex
-        this.name = name
-        this.dtype = dtype ?: if (data.isNotEmpty()) guessDtype(data.first()) else null
-        
-        // 验证索引和数据长度是否一致
-        if (this.index.size != this.data.size) {
-            throw IllegalArgumentException("Index和Data的长度必须一致")
-        }
-
-        this.indexToPosition = buildIndexToPositionMap()
-    }
+    ) : this(data, index, name, dtype, true, true)
 
     /**
      * 构造函数 - 通过Map创建Series
@@ -63,41 +86,31 @@ class Series<T> {
     constructor(
         map: Map<Any, T?>,
         name: String? = null
-    ) {
-        this.data = map.values.toList()
-        val rawIndex = map.keys.toList()
-        
-        // 验证索引类型：只能是Int或String
-        validateIndexType(rawIndex)
-        
-        this.index = rawIndex
-        this.name = name
-        this.dtype = if (!this.data.isEmpty() && this.data.first() != null) guessDtype(this.data.first()) else null
-        this.indexToPosition = buildIndexToPositionMap()
-    }
-    
+    ) : this(map.values.toList(), map.keys.toList(), name, null, false, true)
+
     /**
      * 验证索引类型：只能是Int或String
      */
     private fun validateIndexType(indexList: List<Any>) {
         for (item in indexList) {
             when (item) {
-                is Int, is String -> return
+                is Int, is String -> continue
                 else -> throw IllegalArgumentException("索引类型必须是Int或String，但得到了: ${item::class.simpleName}")
             }
         }
     }
-    
+
     /**
-     * 构建索引到位置的映射表
+     * 构建索引到位置的映射表（仅在按标签访问时调用）
      */
     private fun buildIndexToPositionMap(): Map<Any, Int> {
-        val map = mutableMapOf<Any, Int>()
+        val map = HashMap<Any, Int>(index.size * 2)
         for ((position, label) in index.withIndex()) {
             map[label] = position
         }
         return map
     }
+
     /**
      * 获取Series的索引
      */
@@ -293,10 +306,11 @@ class Series<T> {
         name: String? = null,
         dtype: AndaTypes? = null
     ): Series<T> {
+        // Series 是不可变视图，无参数时直接复用，避免对大列做无意义的复制。
+        if (data == null && index == null && name == null && dtype == null) return this
         val newData = data ?: this.data
         val newIndex = index ?: this.index
-        val newSeries = Series(newData, newIndex, name ?: this.name, dtype ?: this.dtype)
-        return newSeries
+        return Series(newData, newIndex, name ?: this.name, dtype ?: this.dtype)
     }
 
 
@@ -308,11 +322,24 @@ class Series<T> {
      */
     operator fun get(label: String): T? {
         // label: Any 只能是 Int 和 String
-        val position = indexToPosition?.get(label)
-        if (position == null) {
+        val position = positionOf(label)
+        if (position < 0) {
             throw NoSuchElementException("未找到索引: $label")
         }
         return data[position]
+    }
+
+    /**
+     * 按标签查找位置，未找到返回 -1。
+     * 索引映射采用惰性构建，避免每个列/Series 都额外持有一个 HashMap。
+     */
+    internal fun positionOf(label: Any): Int {
+        if (index is RangeIndexList) {
+            val i = label as? Int ?: return -1
+            return if (i in index.indices) i else -1
+        }
+        val map = indexToPosition ?: buildIndexToPositionMap().also { indexToPosition = it }
+        return map[label] ?: -1
     }
 
     /**
@@ -336,13 +363,8 @@ class Series<T> {
      * @return 包含前n个元素的新Series
      */
     fun head(n: Int = 5): Series<T> {
-        val actualN = kotlin.math.min(n, data.size)
-        return Series(
-            data.take(actualN),
-            index.take(actualN),
-            name,
-            dtype
-        )
+        val actualN = kotlin.math.min(kotlin.math.max(n, 0), data.size)
+        return take(IntArray(actualN) { it })
     }
 
     /**
@@ -352,13 +374,9 @@ class Series<T> {
      * @return 包含后n个元素的新Series
      */
     fun tail(n: Int = 5): Series<T> {
-        val actualN = kotlin.math.min(n, data.size)
-        return Series(
-            data.takeLast(actualN),
-            index.takeLast(actualN),
-            name,
-            dtype
-        )
+        val actualN = kotlin.math.min(kotlin.math.max(n, 0), data.size)
+        val start = data.size - actualN
+        return take(IntArray(actualN) { start + it })
     }
 
     /**
@@ -448,10 +466,13 @@ class Series<T> {
      * @return 排序后的新Series
      */
     fun sortIndex(): Series<T> {
-        val sortedPairs = index.zip(data).sortedBy { it.first.toString() }
-        val sortedIndex = sortedPairs.map { it.first }
-        val sortedData = sortedPairs.map { it.second }
-        return Series(sortedData, sortedIndex, name, dtype)
+        val positions = Array(index.size) { it }
+        positions.sortWith(Comparator { a, b ->
+            val ia = index[a]
+            val ib = index[b]
+            if (ia is Int && ib is Int) ia.compareTo(ib) else ia.toString().compareTo(ib.toString())
+        })
+        return take(IntArray(positions.size) { positions[it] })
     }
 
     /**
@@ -483,17 +504,22 @@ class Series<T> {
      * @return 不包含空值的新Series
      */
     fun dropna(): Series<T> {
-        val cleanData = mutableListOf<T?>()
-        val cleanIndex = mutableListOf<Any>()
-        
-        for (i in data.indices) {
-            if (data[i] != null) {
-                cleanData.add(data[i])
-                cleanIndex.add(index[i])
-            }
+        val mask = presenceMask
+        if (mask != null) {
+            var kept = 0
+            for (p in mask) if (p) kept++
+            val positions = IntArray(kept)
+            var k = 0
+            for (i in mask.indices) if (mask[i]) positions[k++] = i
+            return take(positions)
         }
-        
-        return Series(cleanData, cleanIndex, name, dtype)
+        var nulls = 0
+        for (v in data) if (v == null) nulls++
+        if (nulls == 0) return this
+        val positions = IntArray(data.size - nulls)
+        var k = 0
+        for (i in data.indices) if (data[i] != null) positions[k++] = i
+        return take(positions)
     }
 
     /**
@@ -578,322 +604,627 @@ class Series<T> {
     }
     
     // ==================== JNI 原生高性能操作 ====================
-    fun sumKt(): Double {
-        if (data.isEmpty()) return 0.0
+    fun sumKt(): Double = sumNumeric()
 
-        val doubleArray = data
-            .filterNotNull()
-            .map { (it as Number).toDouble() }
-            .toDoubleArray()
-
-        var sum = 0.0;
-        for (d in doubleArray){
-            sum=sum+d
-        }
-
-
-        return sum
-    }
     /**
-     * 使用原生方法计算和（高性能）
-     * 仅适用于数值类型的Series
+     * 计算和（数值列）
+     *
+     * 直接基于列式原始数组/单次遍历，避免 filterNotNull + map 产生两个中间 List。
      */
     fun sum(): Double {
         if (data.isEmpty()) return 0.0
-        
-        val doubleArray = data
-            .filterNotNull()
-            .map { (it as Number).toDouble() }
-            .toDoubleArray()
-        
-        return NativeMath.sumDoubleArray(doubleArray)
+        val storage = doubleStorage
+        if (storage != null && presenceMask == null && storage.size > NATIVE_THRESHOLD && NativeAvailability.available) {
+            return NativeMath.sumDoubleArray(storage)
+        }
+        return sumNumeric()
     }
-    
+
     /**
-     * 使用原生方法计算均值（高性能）
-     * 仅适用于数值类型的Series
+     * 计算均值（数值列）
      */
     fun mean(): Double {
         if (data.isEmpty()) return 0.0
-        
-        val doubleArray = data
-            .filterNotNull()
-            .map { (it as Number).toDouble() }
-            .toDoubleArray()
-        
-        return NativeMath.meanDoubleArray(doubleArray)
+        var count = 0L
+        var sum = 0.0
+        forEachNumeric { sum += it; count++ }
+        return if (count == 0L) 0.0 else sum / count
     }
-    
+
     /**
-     * 使用原生方法计算最大值（高性能）
-     * 仅适用于数值类型的Series
+     * 计算最大值（数值列）
      */
     fun max(): Double {
         if (data.isEmpty()) return 0.0
-        
-        val doubleArray = data
-            .filterNotNull()
-            .map { (it as Number).toDouble() }
-            .toDoubleArray()
-        
-        return NativeMath.maxDoubleArray(doubleArray)
+        var found = false
+        var max = Double.NEGATIVE_INFINITY
+        forEachNumeric { v -> if (!found || v > max) { max = v; found = true } }
+        return if (found) max else 0.0
     }
-    
+
     /**
-     * 使用原生方法计算最小值（高性能）
-     * 仅适用于数值类型的Series
+     * 计算最小值（数值列）
      */
     fun min(): Double {
         if (data.isEmpty()) return 0.0
-        
-        val doubleArray = data
-            .filterNotNull()
-            .map { (it as Number).toDouble() }
-            .toDoubleArray()
-        
-        return NativeMath.minDoubleArray(doubleArray)
+        var found = false
+        var min = Double.POSITIVE_INFINITY
+        forEachNumeric { v -> if (!found || v < min) { min = v; found = true } }
+        return if (found) min else 0.0
     }
-    
+
     /**
-     * 使用原生方法计算方差（高性能）
-     * 仅适用于数值类型的Series
+     * 计算方差（样本方差，ddof=1，与 pandas 一致）
      */
-    fun variance(): Double {
-        if (data.isEmpty()) return 0.0
-        
-        val doubleArray = data
-            .filterNotNull()
-            .map { (it as Number).toDouble() }
-            .toDoubleArray()
-        
-        return NativeMath.variance(doubleArray)
-    }
-    
+    fun variance(): Double = varianceNumeric()
+
     /**
-     * 使用原生方法计算标准差（高性能）
-     * 仅适用于数值类型的Series
+     * 计算标准差（样本标准差，ddof=1，与 pandas 一致）
      */
-    fun std(): Double {
-        if (data.isEmpty()) return 0.0
-        
-        val doubleArray = data
-            .filterNotNull()
-            .map { (it as Number).toDouble() }
-            .toDoubleArray()
-        
-        return NativeMath.std(doubleArray)
-    }
-    
+    fun std(): Double = kotlin.math.sqrt(varianceNumeric())
+
     /**
-     * 使用原生方法进行归一化（高性能）
-     * 仅适用于数值类型的Series
+     * 标准化（z-score，总体标准差）
      */
     fun normalize(): Series<Double> {
         if (data.isEmpty()) {
             return Series(emptyList(), index, if (name != null) "${name}_normalized" else null)
         }
-        
-        val doubleArray = data
-            .filterNotNull()
-            .map { (it as Number).toDouble() }
-            .toDoubleArray()
-        
-        val normalized = NativeMath.normalize(doubleArray)
-        
-        return Series(normalized.toList(), index, if (name != null) "${name}_normalized" else null)
+
+        var count = 0L
+        var sum = 0.0
+        var sumSq = 0.0
+        forEachNumeric { v ->
+            sum += v
+            sumSq += v * v
+            count++
+        }
+        if (count == 0L) {
+            return Series(emptyList(), index, if (name != null) "${name}_normalized" else null)
+        }
+        val mean = sum / count
+        val variance = (sumSq / count) - mean * mean
+        val std = kotlin.math.sqrt(if (variance > 0) variance else 0.0)
+
+        val result = DoubleArray(data.size)
+        var i = 0
+        for (v in data) {
+            result[i++] = if (v is Number) {
+                if (std > 0) (v.toDouble() - mean) / std else 0.0
+            } else {
+                Double.NaN
+            }
+        }
+        val series = fromDoubleArray(result, null, index, if (name != null) "${name}_normalized" else null, AndaTypes.FLOAT64)
+        @Suppress("UNCHECKED_CAST")
+        return series as Series<Double>
     }
-    
+
     /**
-     * 使用原生方法进行排序（高性能）
-     * 仅适用于数值类型的Series
+     * 按数值排序（保留原索引）
      */
     fun sortValuesNative(descending: Boolean = false): Series<T> {
         if (data.isEmpty()) return this
-        
-        val doubleArray = data
-            .filterNotNull()
-            .map { (it as Number).toDouble() }
-            .toDoubleArray()
-        
-        val indices = if (descending) {
-            NativeMath.argsort(doubleArray).reversed()
-        } else {
-            NativeMath.argsort(doubleArray).toList()
-        }
-        
-        val sortedData = indices.map { data[it] }
-        val sortedIndex = indices.map { index[it] }
-        
-        return Series(sortedData, sortedIndex, name, dtype)
+        val positions = sortedPositions(descending)
+        return take(positions)
     }
-    
+
     /**
-     * 使用原生方法进行布尔筛选（高性能）
-     * 仅适用于数值类型的Series
+     * 大于阈值的筛选（保留原索引）
      */
     fun filterGreaterThan(threshold: Double): Series<T> {
         if (data.isEmpty()) return this
-        
-        val doubleArray = data
-            .filterNotNull()
-            .map { (it as Number).toDouble() }
-            .toDoubleArray()
-        
-        val mask = NativeMath.greaterThan(doubleArray, threshold)
-        val indices = NativeData.where(mask)
-        
-        val filteredData = indices.map { data[it.toInt()] }
-        val filteredIndex = indices.map { index[it.toInt()] }
-        
-        return Series(filteredData, filteredIndex, name, dtype)
+        val positions = ArrayList<Int>()
+        for (i in data.indices) {
+            val v = data[i]
+            if (v is Number && v.toDouble() > threshold) positions.add(i)
+        }
+        return take(positions.toIntArray())
     }
-    
+
     /**
-     * 使用原生方法查找空值索引（高性能）
+     * 查找空值索引
      */
     fun findNullIndices(): List<Int> {
-        val doubleArray = data.map { 
-            if (it == null) Double.NaN 
-            else (it as Number).toDouble() 
-        }.toDoubleArray()
-        
-        return NativeData.findNullIndices(doubleArray).map { it.toInt() }
-    }
-    
-    /**
-     * 使用原生方法丢弃空值（高性能）
-     */
-    fun dropNullValues(): Series<T> {
-        val doubleArray = data.map { 
-            if (it == null) Double.NaN 
-            else (it as Number).toDouble() 
-        }.toDoubleArray()
-        
-        val result = NativeData.dropNullValues(doubleArray)
-        
-        // 找到非空值的原始索引
-        val nonNullIndices = mutableListOf<Int>()
-        for (i in data.indices) {
-            if (data[i] != null) {
-                nonNullIndices.add(i)
-            }
+        val result = ArrayList<Int>()
+        val mask = presenceMask
+        if (mask != null) {
+            for (i in mask.indices) if (!mask[i]) result.add(i)
+            return result
         }
-        
-        val cleanData = nonNullIndices.map { data[it] }
-        val cleanIndex = nonNullIndices.map { index[it] }
-        
-        return Series(cleanData, cleanIndex, name, dtype)
+        for (i in data.indices) if (data[i] == null) result.add(i)
+        return result
     }
-    
+
     /**
-     * 使用原生方法填充空值（高性能）
+     * 丢弃空值（保留原索引）
+     */
+    fun dropNullValues(): Series<T> = dropna()
+
+    /**
+     * 用常量填充空值
      */
     fun fillNullWithConstant(value: Double): Series<Double> {
-        val doubleArray = data.map { 
-            if (it == null) Double.NaN 
-            else (it as Number).toDouble() 
-        }.toDoubleArray()
-        
-        val result = NativeData.fillNullWithConstant(doubleArray, value)
-        
-        return Series(result.toList(), index, if (name != null) "${name}_filled" else null)
+        val result = DoubleArray(data.size)
+        for (i in data.indices) {
+            val v = data[i]
+            result[i] = if (v is Number) v.toDouble() else value
+        }
+        val series = fromDoubleArray(result, null, index, if (name != null) "${name}_filled" else null, AndaTypes.FLOAT64)
+        @Suppress("UNCHECKED_CAST")
+        return series as Series<Double>
     }
-    
+
     /**
-     * 使用原生方法进行排序索引（高性能）
+     * 排序索引（与 pandas 类似：空值排在最后）
      */
-    fun sortIndices(descending: Boolean = false): List<Int> {
-        if (data.isEmpty()) return emptyList()
-        
-        val doubleArray = data
-            .filterNotNull()
-            .map { (it as Number).toDouble() }
-            .toDoubleArray()
-        
-        return NativeData.sortIndices(doubleArray, descending).toList()
-    }
-    
+    fun sortIndices(descending: Boolean = false): List<Int> =
+        sortedPositions(descending).toList()
+
     /**
-     * 使用原生方法进行统计描述（高性能）
-     * 仅适用于数值类型的Series
+     * 统计描述（count/mean/std/min/max）
      */
     fun describe(): Map<String, Double> {
-        if (data.isEmpty()) {
+        var count = 0L
+        var mean = 0.0
+        var m2 = 0.0
+        var min = Double.POSITIVE_INFINITY
+        var max = Double.NEGATIVE_INFINITY
+        forEachNumeric { v ->
+            count++
+            val delta = v - mean
+            mean += delta / count
+            m2 += delta * (v - mean)
+            if (v < min) min = v
+            if (v > max) max = v
+        }
+        if (count == 0L) {
             return mapOf(
                 "count" to 0.0,
-                "mean" to 0.0,
-                "std" to 0.0,
-                "min" to 0.0,
-                "max" to 0.0
+                "mean" to Double.NaN,
+                "std" to Double.NaN,
+                "min" to Double.NaN,
+                "max" to Double.NaN
             )
         }
-        
-        val doubleArray = data
-            .filterNotNull()
-            .map { (it as Number).toDouble() }
-            .toDoubleArray()
-        
-        val result = NativeData.describe(doubleArray)
-        
+        val std = if (count > 1) kotlin.math.sqrt(m2 / (count - 1)) else 0.0
         return mapOf(
-            "count" to result[0],
-            "mean" to result[1],
-            "std" to result[2],
-            "min" to result[3],
-            "max" to result[4]
+            "count" to count.toDouble(),
+            "mean" to mean,
+            "std" to std,
+            "min" to min,
+            "max" to max
         )
     }
-    
+
     /**
-     * 使用原生方法进行数据采样（高性能）
+     * 随机采样（保留原索引）
      */
     fun sample(sampleSize: Int): Series<T> {
         if (data.isEmpty() || sampleSize <= 0) {
-            return Series(emptyList(), emptyList(), name, dtype)
+            return Series(emptyList(), index, name, dtype)
         }
-        
         if (sampleSize >= data.size) {
             return this.copy()
         }
-        
-        val doubleArray = data.map { 
-            if (it == null) Double.NaN 
-            else (it as Number).toDouble() 
-        }.toDoubleArray()
-        
-        val sampleIndices = NativeData.sample(doubleArray, sampleSize).map { it.toInt() }
-        
-        val sampledData = sampleIndices.map { data[it] }
-        val sampledIndex = sampleIndices.map { index[it] }
-        
-        return Series(sampledData, sampledIndex, name, dtype)
+
+        val random = java.util.Random()
+        val picked = java.util.HashSet<Int>(sampleSize * 2)
+        while (picked.size < sampleSize) {
+            picked.add(random.nextInt(data.size))
+        }
+        return take(picked.toIntArray())
     }
-    
+
     /**
-     * 使用原生方法批量处理（高性能）
+     * 批量处理（保留兼容；原生库可用时走原生批量处理）
      */
     fun processBatch(batchSize: Int = 1000): Series<Double> {
         if (data.isEmpty()) {
             return Series(emptyList(), index, if (name != null) "${name}_processed" else null)
         }
-        
-        val doubleArray = data
-            .filterNotNull()
-            .map { (it as Number).toDouble() }
-            .toDoubleArray()
-        
-        val result = NativeBatch.processBatch(doubleArray, batchSize)
-        
-        return Series(result.map { it as Double? }, index, if (name != null) "${name}_processed" else null)
+
+        val doubleArray = toDoubleArrayNumeric()
+        val result = if (NativeAvailability.available) {
+            NativeBatch.processBatch(doubleArray, batchSize)
+        } else {
+            doubleArray
+        }
+        val series = fromDoubleArray(result, null, index, if (name != null) "${name}_processed" else null, AndaTypes.FLOAT64)
+        @Suppress("UNCHECKED_CAST")
+        return series as Series<Double>
     }
-    
+
     /**
-     * 检查原生库是否可用
+     * 检查原生库是否可用（结果缓存，避免每次计算都触发 JNI 探测）
      */
-    fun isNativeAvailable(): Boolean {
-        return try {
-            NativeMath.isAvailable() && NativeData.isAvailable()
-        } catch (e: Exception) {
+    fun isNativeAvailable(): Boolean = NativeAvailability.available
+
+    /** 只修改名称，复用列式存储，避免重命名大列时装箱。 */
+    internal fun renamed(newName: String): Series<T> {
+        val s = Series(data, index, newName, dtype, false, false)
+        s.doubleStorage = doubleStorage
+        s.longStorage = longStorage
+        s.intStorage = intStorage
+        s.boolStorage = boolStorage
+        s.presenceMask = presenceMask
+        return s
+    }
+
+    // ==================== 内部高性能工具 ====================
+
+    private inline fun forEachNumeric(action: (Double) -> Unit) {
+        doubleStorage?.let { values ->
+            val mask = presenceMask
+            if (mask == null) {
+                for (v in values) action(v)
+            } else {
+                for (i in values.indices) if (mask[i]) action(values[i])
+            }
+            return
+        }
+        intStorage?.let { values ->
+            val mask = presenceMask
+            if (mask == null) {
+                for (v in values) action(v.toDouble())
+            } else {
+                for (i in values.indices) if (mask[i]) action(values[i].toDouble())
+            }
+            return
+        }
+        longStorage?.let { values ->
+            val mask = presenceMask
+            if (mask == null) {
+                for (v in values) action(v.toDouble())
+            } else {
+                for (i in values.indices) if (mask[i]) action(values[i].toDouble())
+            }
+            return
+        }
+        boolStorage?.let { values ->
+            val mask = presenceMask
+            if (mask == null) {
+                for (v in values) action(if (v) 1.0 else 0.0)
+            } else {
+                for (i in values.indices) if (mask[i]) action(if (values[i]) 1.0 else 0.0)
+            }
+            return
+        }
+        for (v in data) {
+            if (v == null) continue
+            action((v as? Number)?.toDouble()
+                ?: throw ClassCastException("列 '$name' 包含非数值类型: ${v::class.simpleName}"))
+        }
+    }
+
+    internal fun sumNumeric(): Double {
+        var sum = 0.0
+        forEachNumeric { sum += it }
+        return sum
+    }
+
+    internal fun countNumeric(): Int {
+        var count = 0
+        forEachNumeric { count++ }
+        return count
+    }
+
+    internal fun maxNumeric(): Double {
+        var found = false
+        var max = Double.NEGATIVE_INFINITY
+        forEachNumeric { v -> if (!found || v > max) { max = v; found = true } }
+        return if (found) max else Double.NaN
+    }
+
+    internal fun minNumeric(): Double {
+        var found = false
+        var min = Double.POSITIVE_INFINITY
+        forEachNumeric { v -> if (!found || v < min) { min = v; found = true } }
+        return if (found) min else Double.NaN
+    }
+
+    internal fun nonNullCount(): Int {
+        val mask = presenceMask
+        if (mask != null) {
+            var count = 0
+            for (p in mask) if (p) count++
+            return count
+        }
+        var count = 0
+        for (v in data) if (v != null) count++
+        return count
+    }
+
+    /** 第一个非空值是否为 Number；全空时按数值列处理（与原有行为一致）。 */
+    internal fun isNumericColumn(): Boolean {
+        for (v in data) {
+            if (v == null) continue
+            return v is Number
+        }
+        return true
+    }
+
+    /** 非空值所在的位置，用于按列过滤行。 */
+    internal fun nonNullPositions(): IntArray {
+        val mask = presenceMask
+        if (mask != null) {
+            var kept = 0
+            for (p in mask) if (p) kept++
+            val out = IntArray(kept)
+            var k = 0
+            for (i in mask.indices) if (mask[i]) out[k++] = i
+            return out
+        }
+        var kept = 0
+        for (v in data) if (v != null) kept++
+        val out = IntArray(kept)
+        var k = 0
+        for (i in data.indices) if (data[i] != null) out[k++] = i
+        return out
+    }
+
+    internal fun varianceNumeric(): Double {
+        var count = 0L
+        var mean = 0.0
+        var m2 = 0.0
+        forEachNumeric { v ->
+            count++
+            val delta = v - mean
+            mean += delta / count
+            m2 += delta * (v - mean)
+        }
+        return if (count > 1) m2 / (count - 1) else 0.0
+    }
+
+    /** 总体方差（ddof=0），用于 z-score 归一化。 */
+    internal fun populationVarianceNumeric(): Double {
+        var count = 0L
+        var sum = 0.0
+        var sumSq = 0.0
+        forEachNumeric { v ->
+            sum += v
+            sumSq += v * v
+            count++
+        }
+        if (count == 0L) return Double.NaN
+        val mean = sum / count
+        val variance = (sumSq / count) - mean * mean
+        return if (variance > 0) variance else 0.0
+    }
+
+    /**
+     * 转换为 DoubleArray（空值变为 NaN），用于原生向量运算。
+     */
+    internal fun toDoubleArrayNumeric(): DoubleArray {
+        val out = DoubleArray(data.size)
+        val mask = presenceMask
+        doubleStorage?.let { values ->
+            if (mask == null) {
+                values.copyInto(out)
+            } else {
+                for (i in values.indices) out[i] = if (mask[i]) values[i] else Double.NaN
+            }
+            return out
+        }
+        intStorage?.let { values ->
+            for (i in values.indices) out[i] = if (mask == null || mask[i]) values[i].toDouble() else Double.NaN
+            return out
+        }
+        longStorage?.let { values ->
+            for (i in values.indices) out[i] = if (mask == null || mask[i]) values[i].toDouble() else Double.NaN
+            return out
+        }
+        boolStorage?.let { values ->
+            for (i in values.indices) out[i] = if (mask == null || mask[i]) (if (values[i]) 1.0 else 0.0) else Double.NaN
+            return out
+        }
+        for (i in data.indices) {
+            val v = data[i]
+            out[i] = if (v is Number) v.toDouble() else Double.NaN
+        }
+        return out
+    }
+
+    /**
+     * 按位置抽取行，尽量复用列式原始数组。
+     */
+    internal fun take(positions: IntArray): Series<T> {
+        val newIndex = ArrayList<Any>(positions.size)
+        for (p in positions) newIndex.add(index[p])
+
+        doubleStorage?.let { src ->
+            val out = DoubleArray(positions.size)
+            for (i in positions.indices) out[i] = src[positions[i]]
+            val mask = copyMask(positions)
+            @Suppress("UNCHECKED_CAST")
+            return fromDoubleArray(out, mask, newIndex, name, dtype) as Series<T>
+        }
+        intStorage?.let { src ->
+            val out = IntArray(positions.size)
+            for (i in positions.indices) out[i] = src[positions[i]]
+            val mask = copyMask(positions)
+            @Suppress("UNCHECKED_CAST")
+            return fromIntArray(out, mask, newIndex, name, dtype) as Series<T>
+        }
+        longStorage?.let { src ->
+            val out = LongArray(positions.size)
+            for (i in positions.indices) out[i] = src[positions[i]]
+            val mask = copyMask(positions)
+            @Suppress("UNCHECKED_CAST")
+            return fromLongArray(out, mask, newIndex, name, dtype) as Series<T>
+        }
+        boolStorage?.let { src ->
+            val out = BooleanArray(positions.size)
+            for (i in positions.indices) out[i] = src[positions[i]]
+            val mask = copyMask(positions)
+            @Suppress("UNCHECKED_CAST")
+            return fromBooleanArray(out, mask, newIndex, name, dtype) as Series<T>
+        }
+
+        val out = ArrayList<T?>(positions.size)
+        for (p in positions) out.add(data[p])
+        return Series(out, newIndex, name, dtype, false, false)
+    }
+
+    private fun copyMask(positions: IntArray): BooleanArray? {
+        val mask = presenceMask ?: return null
+        val out = BooleanArray(positions.size)
+        for (i in positions.indices) out[i] = mask[positions[i]]
+        return out
+    }
+
+    private fun sortedPositions(descending: Boolean): IntArray {
+        val n = data.size
+        val positions = Array(n) { it }
+        val comparator = Comparator<Int> { a, b ->
+            val va = data[a]
+            val vb = data[b]
+            // 空值始终排在最后，不受升/降序影响
+            if (va == null) return@Comparator if (vb == null) 0 else 1
+            if (vb == null) return@Comparator -1
+            val result = when {
+                va is Number && vb is Number -> va.toDouble().compareTo(vb.toDouble())
+                else -> {
+                    val ca = va as? Comparable<Any>
+                    @Suppress("UNCHECKED_CAST")
+                    if (ca != null && va::class == vb::class) {
+                        ca.compareTo(vb as Any)
+                    } else {
+                        va.toString().compareTo(vb.toString())
+                    }
+                }
+            }
+            if (descending) -result else result
+        }
+        positions.sortWith(comparator)
+        val out = IntArray(n)
+        for (i in 0 until n) out[i] = positions[i]
+        return out
+    }
+
+    companion object {
+        private const val NATIVE_THRESHOLD = 256
+
+        /** 内部快速包装：不复制数据、不做全量索引校验 */
+        internal fun <T> wrap(
+            data: List<T?>,
+            index: List<Any>,
+            name: String? = null,
+            dtype: AndaTypes? = null
+        ): Series<T> = Series(data, index, name, dtype, false, false)
+
+        internal fun fromDoubleArray(
+            values: DoubleArray,
+            present: BooleanArray?,
+            index: List<Any>,
+            name: String?,
+            dtype: AndaTypes?
+        ): Series<Any> {
+            val s = Series<Any>(DoubleColumnList(values, present), index, name, dtype, false, false)
+            s.doubleStorage = values
+            s.presenceMask = present
+            return s
+        }
+
+        internal fun fromLongArray(
+            values: LongArray,
+            present: BooleanArray?,
+            index: List<Any>,
+            name: String?,
+            dtype: AndaTypes?
+        ): Series<Any> {
+            val s = Series<Any>(LongColumnList(values, present), index, name, dtype, false, false)
+            s.longStorage = values
+            s.presenceMask = present
+            return s
+        }
+
+        internal fun fromIntArray(
+            values: IntArray,
+            present: BooleanArray?,
+            index: List<Any>,
+            name: String?,
+            dtype: AndaTypes?
+        ): Series<Any> {
+            val s = Series<Any>(IntColumnList(values, present), index, name, dtype, false, false)
+            s.intStorage = values
+            s.presenceMask = present
+            return s
+        }
+
+        internal fun fromBooleanArray(
+            values: BooleanArray,
+            present: BooleanArray?,
+            index: List<Any>,
+            name: String?,
+            dtype: AndaTypes?
+        ): Series<Any> {
+            val s = Series<Any>(BooleanColumnList(values, present), index, name, dtype, false, false)
+            s.boolStorage = values
+            s.presenceMask = present
+            return s
+        }
+
+        /** 单个单元格的轻量 Series，用于行列访问，避免全量索引校验和复制 */
+        internal fun single(value: Any?, name: String?): Series<Any> =
+            Series(listOf(value), SINGLE_INDEX, name, null, false, false)
+
+        private val SINGLE_INDEX: List<Any> = listOf(0)
+    }
+}
+
+/** 仅包含 0..size-1 的虚拟索引，O(1) 内存，按需装箱。 */
+internal class RangeIndexList(override val size: Int) : AbstractList<Any>() {
+    override fun get(index: Int): Any = index
+
+    override fun indexOf(element: Any?): Int {
+        val i = element as? Int ?: return -1
+        return if (i >= 0 && i < size) i else -1
+    }
+
+    override fun lastIndexOf(element: Any?): Int = indexOf(element)
+
+    override fun contains(element: Any?): Boolean = indexOf(element) >= 0
+}
+
+internal class DoubleColumnList(
+    private val values: DoubleArray,
+    private val present: BooleanArray?
+) : AbstractList<Any?>() {
+    override val size: Int get() = values.size
+    override fun get(index: Int): Any? = if (present == null || present[index]) values[index] else null
+}
+
+internal class LongColumnList(
+    private val values: LongArray,
+    private val present: BooleanArray?
+) : AbstractList<Any?>() {
+    override val size: Int get() = values.size
+    override fun get(index: Int): Any? = if (present == null || present[index]) values[index] else null
+}
+
+internal class IntColumnList(
+    private val values: IntArray,
+    private val present: BooleanArray?
+) : AbstractList<Any?>() {
+    override val size: Int get() = values.size
+    override fun get(index: Int): Any? = if (present == null || present[index]) values[index] else null
+}
+
+internal class BooleanColumnList(
+    private val values: BooleanArray,
+    private val present: BooleanArray?
+) : AbstractList<Any?>() {
+    override val size: Int get() = values.size
+    override fun get(index: Int): Any? = if (present == null || present[index]) values[index] else null
+}
+
+/** 原生库可用性缓存（只探测一次）。 */
+internal object NativeAvailability {
+    val available: Boolean by lazy {
+        try {
+            NativeMath.sumDoubleArray(doubleArrayOf(1.0, 2.0, 3.0)) == 6.0
+        } catch (t: Throwable) {
             false
         }
     }
