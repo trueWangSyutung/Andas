@@ -1102,6 +1102,111 @@ class Series<T> private constructor(
         return out
     }
 
+    // ==================== 扩展统计 / 时间序列操作 ====================
+
+    /** 向后移动 periods 个位置，空出的位置为 null。 */
+    fun shift(periods: Int = 1): Series<T> {
+        if (periods == 0) return this
+        val values = ArrayList<Any?>(data.size)
+        for (i in data.indices) {
+            val source = i - periods
+            values.add(if (source in data.indices) data[source] else null)
+        }
+        @Suppress("UNCHECKED_CAST")
+        return Series.wrap(values, index, name, dtype) as Series<T>
+    }
+
+    /** 一阶/多阶差分（数值列）。 */
+    fun diff(periods: Int = 1): Series<Double> {
+        val values = ArrayList<Any?>(data.size)
+        for (i in data.indices) {
+            val source = i - periods
+            val current = data[i] as? Number
+            val previous = if (source in data.indices) data[source] as? Number else null
+            values.add(if (current != null && previous != null) current.toDouble() - previous.toDouble() else null)
+        }
+        @Suppress("UNCHECKED_CAST")
+        return Series.wrap(values, index, if (name != null) "${name}_diff" else null) as Series<Double>
+    }
+
+    /** 百分比变化。 */
+    fun pctChange(periods: Int = 1): Series<Double> {
+        val values = ArrayList<Any?>(data.size)
+        for (i in data.indices) {
+            val source = i - periods
+            val current = data[i] as? Number
+            val previous = if (source in data.indices) data[source] as? Number else null
+            values.add(
+                if (current != null && previous != null && previous.toDouble() != 0.0) {
+                    (current.toDouble() - previous.toDouble()) / kotlin.math.abs(previous.toDouble())
+                } else null
+            )
+        }
+        @Suppress("UNCHECKED_CAST")
+        return Series.wrap(values, index, if (name != null) "${name}_pct" else null) as Series<Double>
+    }
+
+    /** 滑动窗口。 */
+    fun rolling(window: Int): RollingSeries<T> {
+        require(window > 0) { "window 必须大于 0" }
+        return RollingSeries(this, window)
+    }
+
+    /** 平均秩（并列取平均）。 */
+    fun rank(): Series<Double> {
+        val positions = data.indices.sortedWith(compareBy { data[it]?.toString() ?: "" })
+        val ranks = DoubleArray(data.size)
+        var i = 0
+        while (i < positions.size) {
+            var j = i
+            while (j + 1 < positions.size && data[positions[j + 1]] == data[positions[i]]) j++
+            val average = (i + j) / 2.0 + 1.0
+            for (k in i..j) ranks[positions[k]] = average
+            i = j + 1
+        }
+        return Series.fromDoubleArray(ranks, null, index, if (name != null) "${name}_rank" else null, AndaTypes.FLOAT64)
+            .let { @Suppress("UNCHECKED_CAST") it as Series<Double> }
+    }
+
+    fun cummax(): Series<Double> = cumulative(true)
+    fun cummin(): Series<Double> = cumulative(false)
+
+    private fun cumulative(maximum: Boolean): Series<Double> {
+        var best = if (maximum) Double.NEGATIVE_INFINITY else Double.POSITIVE_INFINITY
+        val values = DoubleArray(data.size)
+        for (i in data.indices) {
+            val value = (data[i] as? Number)?.toDouble()
+            if (value != null) best = if (maximum) kotlin.math.max(best, value) else kotlin.math.min(best, value)
+            values[i] = best
+        }
+        return Series.fromDoubleArray(values, null, index, name, AndaTypes.FLOAT64)
+            .let { @Suppress("UNCHECKED_CAST") it as Series<Double> }
+    }
+
+    /** 数值分位数（线性插值）。 */
+    fun quantile(q: Double): Double {
+        require(q in 0.0..1.0)
+        val values = ArrayList<Double>()
+        for (value in data) if (value is Number) values.add(value.toDouble())
+        if (values.isEmpty()) return Double.NaN
+        values.sort()
+        val position = q * (values.size - 1)
+        val lower = position.toInt()
+        val upper = kotlin.math.min(lower + 1, values.size - 1)
+        val fraction = position - lower
+        return values[lower] * (1 - fraction) + values[upper] * fraction
+    }
+
+    fun median(): Double = quantile(0.5)
+
+    fun mode(): T? {
+        val counts = LinkedHashMap<T?, Int>()
+        for (value in data) counts[value] = (counts[value] ?: 0) + 1
+        return counts.maxByOrNull { it.value }?.key
+    }
+
+    fun toDoubleArray(): DoubleArray = toDoubleArrayNumeric()
+
     companion object {
         private const val NATIVE_THRESHOLD = 256
 
@@ -1170,6 +1275,45 @@ class Series<T> private constructor(
             Series(listOf(value), SINGLE_INDEX, name, null, false, false)
 
         private val SINGLE_INDEX: List<Any> = listOf(0)
+    }
+}
+
+/** 滑动窗口聚合。窗口不足的位置返回 null。 */
+class RollingSeries<T>(
+    private val series: Series<T>,
+    private val window: Int
+) {
+    fun mean(): Series<Double> = aggregate { values ->
+        values.sum() / values.size
+    }
+
+    fun sum(): Series<Double> = aggregate { values -> values.sum() }
+
+    fun std(): Series<Double> = aggregate { values ->
+        if (values.size < 2) Double.NaN else {
+            val mean = values.sum() / values.size
+            kotlin.math.sqrt(values.sumOf { (it - mean) * (it - mean) } / (values.size - 1))
+        }
+    }
+
+    fun min(): Series<Double> = aggregate { values -> values.minOrNull() ?: Double.NaN }
+    fun max(): Series<Double> = aggregate { values -> values.maxOrNull() ?: Double.NaN }
+    fun count(): Series<Double> = aggregate { values -> values.size.toDouble() }
+
+    private fun aggregate(block: (DoubleArray) -> Double): Series<Double> {
+        val values = ArrayList<Any?>(series.size())
+        for (i in 0 until series.size()) {
+            if (i < window - 1) {
+                values.add(null)
+            } else {
+                val windowValues = DoubleArray(window) { offset ->
+                    (series[i - window + 1 + offset] as? Number)?.toDouble() ?: Double.NaN
+                }
+                values.add(if (windowValues.any { it.isNaN() }) null else block(windowValues))
+            }
+        }
+        @Suppress("UNCHECKED_CAST")
+        return Series.wrap(values, series.index(), "${series.name()}_rolling") as Series<Double>
     }
 }
 

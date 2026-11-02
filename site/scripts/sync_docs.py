@@ -5,7 +5,7 @@ Single source of truth:
   doc/                      -> site/docs/guide/
   QUICK_START.md            -> site/docs/quickstart.md
   API_REFERENCE.md          -> site/docs/api.md
-  CHANGELOG_0.1.5.md        -> site/docs/changelog.md
+  CHANGELOG_0.2.0.md        -> site/docs/changelog.md
   BENCHMARK_REPORT.md       -> site/docs/benchmark/report.md
   bench/README.md           -> site/docs/benchmark/reproduce.md
   report/*.pdf|*.tex        -> site/docs/assets/
@@ -46,9 +46,15 @@ def sync_guide() -> None:
         "charter4/async.md": "async.md",
         "charter5/jni.md": "jni.md",
         "charter6/performance.md": "performance.md",
+        "numpy/ndarray.md": "ndarray.md",
+        "scipy/stats.md": "scipy.md",
+        "plot/plotting.md": "plotting.md",
+        "annotation/extensions.md": "extensions.md",
+        "demo/showcase.md": "demo.md",
     }
     for source, target in chapters.items():
         text = (ROOT / "doc" / source).read_text(encoding="utf-8")
+        text = text.replace("(images/", "(../assets/images/demo/")
         # Normalize the first heading to H1 so the page title is consistent.
         lines = text.splitlines()
         for index, line in enumerate(lines):
@@ -65,17 +71,22 @@ def sync_flat_docs() -> None:
     write(DOCS / "quickstart.md", quick)
 
     copy(ROOT / "API_REFERENCE.md", DOCS / "api.md")
-    copy(ROOT / "CHANGELOG_0.1.5.md", DOCS / "changelog.md")
+    changelog = (ROOT / "CHANGELOG_0.2.0.md").read_text(encoding="utf-8")
+    changelog = changelog.replace("(bench/NUMPY_SCIPY_BENCHMARK.md)", "(benchmark/numeric.md)")
+    changelog = changelog.replace("(report/andas-technical-report.pdf)", "(assets/andas-technical-report.pdf)")
+    (DOCS / "changelog.md").write_text(changelog, encoding="utf-8")
 
 
 def sync_benchmark() -> None:
     report = (ROOT / "BENCHMARK_REPORT.md").read_text(encoding="utf-8")
+    report = report.replace("(bench/NUMPY_SCIPY_BENCHMARK.md)", "(numeric.md)")
     report = report.replace("bench/results/", "../assets/data/")
     report = report.replace("](bench/README.md)", "](reproduce.md)")
     report = report.replace("`bench/results/`", "`../assets/data/`")
     # Images live under assets/images, not assets/data.
     report = report.replace("../assets/data/fig_", "../assets/images/fig_")
     write(BENCH / "report.md", report)
+    copy(ROOT / "bench/NUMPY_SCIPY_BENCHMARK.md", BENCH / "numeric.md")
 
     reproduce = (ROOT / "bench/README.md").read_text(encoding="utf-8")
     reproduce = reproduce.replace("(../BENCHMARK_REPORT.md)", "(report.md)")
@@ -102,6 +113,8 @@ def sync_benchmark() -> None:
     copy(ROOT / "bench/results/android_new.log", DATA / "android_new.log")
     copy(ROOT / "bench/results/android_baseline.log", DATA / "android_baseline.log")
 
+    for image in (ROOT / "doc/demo/images").glob("*.png"):
+        copy(image, IMAGES / "demo" / image.name)
     copy(ROOT / "report/andas-technical-report.pdf", ASSETS / "andas-technical-report.pdf")
     copy(ROOT / "report/andas-technical-report.tex", ASSETS / "andas-technical-report.tex")
 

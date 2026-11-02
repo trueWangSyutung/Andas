@@ -308,6 +308,13 @@ pandas 生成期望 JSON；JVM 使用 `bench/java/Consistency.java`，Android �
 [consistency_pandas.json](bench/results/consistency_pandas.json)，Android 原始输出见
 [android_consistency.log](bench/results/android_consistency.log)。
 
+## 4.5 数值计算性能与一致性（0.2.0 预览）
+
+新增 NDArray/SciPy 数值栈后，补充了独立实验：JVM Kotlin 回退、Android JNI 与 Python NumPy
+在相同输入上对比，并用 43 个参考指标验证一致性。JNI radix-2 FFT 相对 Kotlin DFT 回退提升
+约 62×，原生 matmul 让 OLS 从 46.9 ms 降至 13.7 ms；43/43 指标在 JVM 与 Android 通过。
+完整方法、数据与复现命令见 [bench/NUMPY_SCIPY_BENCHMARK.md](bench/NUMPY_SCIPY_BENCHMARK.md)。
+
 ## 5. 讨论
 
 ### 5.1 内存复杂度

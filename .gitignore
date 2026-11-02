@@ -52,3 +52,8 @@ report/*.fdb_latexmk
 report/*.out
 report/.mpl/
 report/*.synctex.gz
+
+# Local emulator AVD copied into the workspace for sandboxed instrumentation tests
+.avd/
+site/docs/benchmark/numeric.md
+bench/java/out/

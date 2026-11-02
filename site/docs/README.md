@@ -5,11 +5,11 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Android](https://img.shields.io/badge/Android-26%2B-green.svg)](https://developer.android.com/)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.0-orange.svg)](https://kotlinlang.org/)
-[![Release](https://img.shields.io/badge/Release-0.1.5-blue.svg)](https://github.com/trueWangSyutung/Andas/releases/tag/0.1.5)
+[![Release](https://img.shields.io/badge/Release-0.2.0-blue.svg)](https://github.com/trueWangSyutung/Andas/releases/tag/0.2.0)
 
 Andas（Android Data Analysis System）为 Android 提供列式存储与流式 CSV 读取能力，
 在 Kotlin/Java 中提供 `Series`、`DataFrame`、筛选、排序、分组、连接、空值处理和异步 I/O。
-0.1.5 起，CSV 读取不再全量物化文件和行对象，20 万行 × 15 列（约 36 MB）可在
+0.2.0 起，CSV 读取不再全量物化文件和行对象，20 万行 × 15 列（约 36 MB）可在
 192 MB 堆的 Android 环境完成读取。
 
 ## 为什么选择 Andas
@@ -42,7 +42,7 @@ println(seniors.shape())
 在 `settings.gradle.kts` 中添加 JitPack 仓库，然后依赖：
 
 ```kotlin
-implementation("com.github.trueWangSyutung:Andas:0.1.5")
+implementation("com.github.trueWangSyutung:Andas:0.2.0")
 ```
 
 ## 文档导航
@@ -64,7 +64,7 @@ implementation("com.github.trueWangSyutung:Andas:0.1.5")
 
 ## 项目状态
 
-- 当前版本：`0.1.5`（2026-11-01）
+- 当前版本：`0.2.0`（2026-11-02）
 - 最低 Android API：26
 - 单元测试：32 个 JVM 测试通过；9 个 JNI 测试在 JVM 跳过，Android instrumentation 覆盖读取路径
 - 许可证：Apache-2.0
@@ -72,5 +72,5 @@ implementation("com.github.trueWangSyutung:Andas:0.1.5")
 ## 链接
 
 - [GitHub 仓库](https://github.com/trueWangSyutung/Andas)
-- [Release 0.1.5](https://github.com/trueWangSyutung/Andas/releases/tag/0.1.5)
+- [Release 0.1.5](https://github.com/trueWangSyutung/Andas/releases/tag/0.2.0)
 - [问题反馈](https://github.com/trueWangSyutung/Andas/issues)

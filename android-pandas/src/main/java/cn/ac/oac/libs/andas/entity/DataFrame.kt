@@ -3,6 +3,8 @@ package cn.ac.oac.libs.andas.entity
 import cn.ac.oac.libs.andas.types.AndaTypes
 import cn.ac.oac.libs.andas.core.NativeMath
 import cn.ac.oac.libs.andas.core.NativeBatch
+import cn.ac.oac.libs.andas.numpy.NDArray
+import cn.ac.oac.libs.andas.scipy.Stats
 import java.io.File
 
 /**
@@ -948,6 +950,92 @@ class DataFrame {
             Series.fromDoubleArray(result, null, index(), colName, AndaTypes.FLOAT64)
         )
     }
+
+    // ==================== pandas 风格扩展统计 ====================
+
+    /** 每列的非空值计数。 */
+    fun count(): Map<String, Int> = columns.associateWith { data[it]!!.nonNullCount() }
+
+    /** 数值列两两协方差（样本协方差，成对删除空值）。 */
+    fun cov(): DataFrame {
+        val numeric = columns.filter { data[it]!!.isNumericColumn() }
+        require(numeric.size >= 2) { "需要至少两个数值列" }
+        val arrays = numeric.associateWith { data[it]!!.toDoubleArrayNumeric() }
+        val result = LinkedHashMap<String, List<Any?>>()
+        for (a in numeric) {
+            val row = ArrayList<Any?>(numeric.size)
+            for (b in numeric) row.add(covariance(arrays[a]!!, arrays[b]!!))
+            result[a] = row
+        }
+        return DataFrame(result)
+    }
+
+    private fun covariance(a: DoubleArray, b: DoubleArray): Double {
+        if (a.size != b.size) return Double.NaN
+        var count = 0L
+        var meanA = 0.0
+        var meanB = 0.0
+        var coMoment = 0.0
+        for (i in a.indices) {
+            if (a[i].isNaN() || b[i].isNaN()) continue
+            count++
+            val da = a[i] - meanA
+            val db = b[i] - meanB
+            meanA += da / count
+            meanB += db / count
+            coMoment += da * (b[i] - meanB)
+        }
+        return if (count > 1) coMoment / (count - 1) else Double.NaN
+    }
+
+    /** 单列频数表。 */
+    fun valueCounts(colName: String): Map<Any?, Int> {
+        val series = column(colName)
+        val result = LinkedHashMap<Any?, Int>()
+        for (i in 0 until series.size()) {
+            val key = series[i]
+            result[key] = (result[key] ?: 0) + 1
+        }
+        return result
+    }
+
+    /** 去除重复行，保留首次出现的行。 */
+    fun dropDuplicates(vararg subset: String): DataFrame {
+        val keyColumns = if (subset.isEmpty()) columns else subset.toList()
+        for (name in keyColumns) require(name in columns) { "列不存在: $name" }
+        val seen = HashSet<List<Any?>>()
+        val positions = ArrayList<Int>()
+        for (i in 0 until shape().first) {
+            val key = keyColumns.map { at(i, it) }
+            if (seen.add(key)) positions.add(i)
+        }
+        return takeRows(positions.toIntArray())
+    }
+
+    /** 按列取最大的 n 行。 */
+    fun nlargest(n: Int, colName: String): DataFrame =
+        takeRows(column(colName).sortIndices(descending = true).take(n).toIntArray())
+
+    /** 按列取最小的 n 行。 */
+    fun nsmallest(n: Int, colName: String): DataFrame =
+        takeRows(column(colName).sortIndices(descending = false).take(n).toIntArray())
+
+    /** 所有数值列的统计描述，行索引为 count/mean/std/min/max。 */
+    fun describeAll(): DataFrame {
+        val numeric = columns.filter { data[it]!!.isNumericColumn() }
+        val stats = listOf("count", "mean", "std", "min", "max")
+        val result = LinkedHashMap<String, List<Any?>>()
+        for (colName in numeric) {
+            val description = data[colName]!!.describe()
+            result[colName] = stats.map { description[it] }
+        }
+        return DataFrame(result)
+    }
+
+    fun quantile(colName: String, q: Double): Double = column(colName).quantile(q)
+    fun median(colName: String): Double = column(colName).median()
+    fun skewness(colName: String): Double = Stats.skewness(NDArray.fromArray(column(colName).toDoubleArrayNumeric()))
+    fun kurtosis(colName: String): Double = Stats.kurtosis(NDArray.fromArray(column(colName).toDoubleArrayNumeric()))
 
     /**
      * 常用的合并操作 - 合并多个DataFrame

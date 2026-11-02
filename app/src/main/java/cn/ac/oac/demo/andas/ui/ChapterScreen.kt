@@ -34,7 +34,8 @@ import kotlinx.coroutines.*
 fun ChapterSelectionScreen(
     chapters: List<ChapterInfo>,
     onChapterClick: (String) -> Unit,
-    onPaperExperimentClick: () -> Unit
+    onPaperExperimentClick: () -> Unit,
+    onMullionClick: () -> Unit = {}
 ) {
     Column(
         modifier = Modifier
@@ -59,6 +60,13 @@ fun ChapterSelectionScreen(
             )
         }
         
+        Button(
+            onClick = onMullionClick,
+            modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)
+        ) {
+            Text("打开 MULLION 自适应功能展廊（NumPy / SciPy / Plot）")
+        }
+
         // 论文实验按钮（置顶显示）
         Card(
             modifier = Modifier

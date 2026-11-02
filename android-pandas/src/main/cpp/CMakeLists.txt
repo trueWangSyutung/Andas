@@ -14,6 +14,8 @@ add_library(
     data_processing.cpp
     double_harsh.cpp
     double_harsh.h
+    numpy_native.cpp
+    scipy_native.cpp
 )
 
 # 查找并链接Android日志库

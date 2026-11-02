@@ -12,14 +12,16 @@ android {
         applicationId = "cn.ac.oac.demo.andas"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "0.2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
         release {
+            // Demo 以 debug key 签名，方便直接安装体验；生产分发请替换为正式签名。
+            signingConfig = signingConfigs.getByName("debug")
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -59,4 +61,8 @@ dependencies {
     
     // 添加对 android-pandas 模块的依赖
     implementation(project(":android-pandas"))
+
+    // MULLION 自适应 UI 框架（Demo 的导航/分栏/主题）
+    implementation("com.github.Mullion-Official.Mullion-Android-Kotlin-Compose:mullion-core:1.0.0")
+    implementation("com.github.Mullion-Official.Mullion-Android-Kotlin-Compose:mullion-compose:1.0.0")
 }

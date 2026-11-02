@@ -1,0 +1,9 @@
+op,jvm_ms
+add_1m,8.6549
+sum_1m,2.0272
+matmul_300,32.7956
+fft_1024,17.3633
+quantile_1m,92.2961
+regression_20k_x5,46.9183
+convolve_100k_x16,4.5235
+normal_cdf_1m,45.5433

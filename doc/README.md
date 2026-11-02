@@ -14,6 +14,17 @@
 | [JNI 原生 API](charter5/jni.md) | 原生数组内核与降级策略 | 性能优化 |
 | [性能优化](charter6/performance.md) | 0.1.5 实测、内存与批量实践 | 性能调优 |
 
+## 数值计算
+
+- [NumPy 风格 NDArray](numpy/ndarray.md)
+- [SciPy 科学计算](scipy/stats.md)
+- [Matplotlib 风格绘图](plot/plotting.md)
+- [注解与扩展](annotation/extensions.md)
+
+## Demo
+
+- [章节式 Demo 与 MULLION 功能展廊](demo/showcase.md)
+
 ## 相关材料
 
 - [快速开始](../QUICK_START.md)
@@ -24,4 +35,4 @@
 
 ## 版本
 
-当前版本：`0.1.5`（2026-11-01）。历史变更见 [CHANGELOG_0.1.5.md](../CHANGELOG_0.1.5.md)。
+当前版本：`0.2.0`（2026-11-02）。历史变更见 [CHANGELOG_0.2.0.md](../CHANGELOG_0.2.0.md)。

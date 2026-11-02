@@ -73,6 +73,11 @@ fun DemoApp() {
                 },
                 onPaperExperimentClick = {
                     currentScreen = Screen.PaperExperiment
+                },
+                onMullionClick = {
+                    context.startActivity(
+                        android.content.Intent(context, MullionShowcaseActivity::class.java)
+                    )
                 }
             )
         }

@@ -622,7 +622,7 @@ val filtered = df.filter { row ->
 }
 ```
 
-**注意：** 当前 API（0.1.5）中 filter 的参数是 `Map<String, Series<Any>?>`，需要通过 `series?.get(0)` 访问单元格值。
+**注意：** 当前 API（0.2.0）中 filter 的参数是 `Map<String, Series<Any>?>`，需要通过 `series?.get(0)` 访问单元格值。
 
 #### sortValues()
 
@@ -1261,3 +1261,17 @@ val age = row["age"]?.get(0)  // Any?，通过 Series 访问
 - 支持异步操作
 - 支持 JNI 原生加速
 - 支持线程池管理
+
+
+## 数值计算 API（0.2.0）
+
+新增包：
+
+- `cn.ac.oac.libs.andas.numpy`：`NDArray`、`DType`、`Linalg`、`FFT`、`NumpyRandom`、`PandasBridge`；
+- `cn.ac.oac.libs.andas.scipy`：`Stats`、回归、`Optimize`、`Integrate`、插值、`Signal`、`Special`；
+- `cn.ac.oac.libs.andas.scipy.sparse`：`SparseMatrix`；
+- `cn.ac.oac.libs.andas.scipy.image`：`ImageOps`；
+- `cn.ac.oac.libs.andas.plot`：`Figure`、`Axes`；
+- `cn.ac.oac.libs.andas.annotation`：`@AndasApi` 等注解与 `AndasExtensions`。
+
+完整签名与示例见 `doc/numpy/`、`doc/scipy/`、`doc/plot/` 与 `doc/annotation/`。

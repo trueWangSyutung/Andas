@@ -105,7 +105,7 @@ implementation.  The contributions are:
 \end{itemize}
 
 The implementation is available at \url{https://github.com/trueWangSyutung/Andas} and is released
-as version 0.1.5.  The raw results, scripts, and figures are included in the repository under
+as version 0.2.0.  The raw results, scripts, and figures are included in the repository under
 \code{bench/}.
 
 \section{Background and Motivation}
@@ -539,6 +539,54 @@ reader exhausts the 192\,MB heap at 100k rows after 18.1\,s and at 200k rows aft
 optimized reader completes 100k rows in 7.3\,s with 18\,MB retained and 200k rows in 16.0\,s with
 35\,MB retained.  For the sizes that both complete, the read time falls by 33\%, 39\%, and 46\% at
 10k, 25k, and 50k rows; retained memory falls by roughly 7$\times$ at 50k.
+
+\subsection{Numeric engine: NumPy-style arrays and SciPy-style kernels}
+
+The 0.2.0 preview adds a typed N-D array, linear algebra, FFT, statistics, regression, sparse
+matrices, image filters, and a Matplotlib-style renderer.  We benchmarked the Kotlin fallback on
+the JVM and the JNI path on the Android emulator against NumPy 1.26 on the same host (Apple M2,
+Python 3.10.11).  Each operation is warmed up once and the median of three runs is reported; the
+JVM uses a 2\,GB heap, Android uses the library's 192\,MB heap.
+
+\begin{table}[t]
+\centering
+\footnotesize
+\caption{Numeric kernel latency (ms, median).  JVM runs the Kotlin fallback; Android uses JNI
+where available.  The last column is Android JNI versus the JVM fallback.}
+\label{tab:numeric}
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+Operation & NumPy & JVM fallback & Android JNI & JNI speedup \\
+\midrule
+add, 1M & 0.95 & 8.65 & 5.08 & 1.7$\times$ \\
+sum, 1M & 0.22 & 2.03 & 1.38 & 1.5$\times$ \\
+matmul, $300^2$ & 34.49 & 32.80 & 39.85 & 0.8$\times$ \\
+FFT, 1024 & 0.008 & 17.36 & 0.28 & 62$\times$ \\
+quantile, 1M & 32.90 & 92.30 & 109.40 & 0.8$\times$ \\
+OLS, $20k\times5$ & 1.00 & 46.92 & 13.66 & 3.4$\times$ \\
+convolve, $100k\times16$ & 0.75 & 4.52 & 1.47 & 3.1$\times$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The JNI path removes the quadratic DFT fallback: FFT drops from 17.4\,ms to 0.28\,ms, a
+62$\times$ improvement, and the OLS normal-equation path benefits from native matmul
+(46.9\,ms to 13.7\,ms).  Dense matmul is already competitive with NumPy; the remaining gaps are
+dominated by JVM/Kotlin loop overhead and by the emulator's CPU, not by asymptotic complexity.
+Quantile is intentionally a full sort in both implementations; the Android result includes
+allocation and GC in the 192\,MB heap.
+
+\subsection{Numeric cross-language consistency}
+
+The numeric stack is checked against 43 reference values generated independently with NumPy,
+\texttt{math.erf}, and an mpmath regularized incomplete beta for the t-test.  Inputs are
+deterministic (an arithmetic sequence, fixed integer matrices, an 8-point FFT, and a 10-point
+linear relation).  JVM and Android instrumentation tests read the same CSV reference table and
+compare sums, moments, quantiles, determinant, linear solve, matmul, FFT coefficients,
+convolution, OLS slope/intercept, normal CDF, and the t statistic/p-value.  Floating-point
+metrics use a relative tolerance of $10^{-10}$ ($10^{-9}$ for FFT and the extreme t p-value);
+all 43 pass on both runtimes.  This complements the pandas consistency experiment and covers
+the new numeric code path rather than the CSV reader.
 
 \section{Discussion}
 
