@@ -30,6 +30,32 @@ figure.axes().bar(listOf("A", "B", "C"), doubleArrayOf(12.0, 30.0, 18.0), "分�
 figure.axes().hist(NDArray.of(1.0, 2.0, 2.0, 3.0, 4.0, 5.0), bins = 5)
 ```
 
+## 更多图类型
+
+```kotlin
+val axes = figure.axes()
+
+// 面积图、阶梯线、误差棒
+axes.area(x, y, "area")
+axes.step(x, y, "step")
+axes.errorBar(x, y, errors, "error")
+
+// 横向柱、堆叠柱、箱线图
+axes.barh(listOf("A", "B", "C"), values, "barh")
+axes.stackedBar(
+    listOf("Q1", "Q2", "Q3"),
+    listOf(doubleArrayOf(1.0, 2.0, 1.5), doubleArrayOf(2.0, 1.0, 2.5)),
+    listOf("线上", "线下")
+)
+axes.box(listOf("A", "B"), listOf(distributionA, distributionB))
+
+// 二维热力图
+axes.heatmap(matrix)
+```
+
+支持的图类型：折线、面积、阶梯、散点、误差棒、柱状、横向柱、堆叠柱、直方图、箱线图、
+热力图、饼图与子图网格。
+
 ## 子图
 
 `Figure(rows, cols)` 创建网格，通过 `axes(row, col)` 访问：

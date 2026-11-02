@@ -228,44 +228,35 @@ fun ChapterDetailScreen(
             )
         }
     ) { padding ->
-        Row(
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            // 左侧示例列表
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .background(Color(0xFFF5F5F5))
-            ) {
-                ExampleList(
-                    examples = examples,
-                    onExampleClick = { selectedExample = it }
-                )
-            }
-            
-            // 右侧代码展示和结果
-            Box(
-                modifier = Modifier
-                    .weight(1.5f)
-                    .background(Color.White)
-            ) {
-                if (selectedExample != null) {
-                    ExampleDetail(
-                        example = selectedExample!!,
-                        context = context
-                    )
-                } else {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "请选择左侧的示例",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = Color.Gray
-                        )
+            if (maxWidth >= 700.dp) {
+                Row(modifier = Modifier.fillMaxSize()) {
+                    Box(modifier = Modifier.weight(1f).background(Color(0xFFF5F5F5))) {
+                        ExampleList(examples = examples, onExampleClick = { selectedExample = it })
+                    }
+                    Box(modifier = Modifier.weight(1.5f).background(Color.White)) {
+                        if (selectedExample != null) {
+                            ExampleDetail(example = selectedExample!!, context = context)
+                        } else {
+                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Text("请选择左侧的示例", style = MaterialTheme.typography.bodyLarge, color = Color.Gray)
+                            }
+                        }
+                    }
+                }
+            } else if (selectedExample == null) {
+                ExampleList(examples = examples, onExampleClick = { selectedExample = it })
+            } else {
+                Column(Modifier.fillMaxSize()) {
+                    TextButton(onClick = { selectedExample = null }) {
+                        Text("← 返回示例列表")
+                    }
+                    Box(Modifier.weight(1f)) {
+                        ExampleDetail(example = selectedExample!!, context = context)
                     }
                 }
             }

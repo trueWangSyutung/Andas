@@ -133,6 +133,120 @@ class Axes internal constructor(
         return this
     }
 
+    fun area(
+        x: DoubleArray,
+        y: DoubleArray,
+        label: String? = null,
+        color: Int = Palette.BLUE,
+        lineWidth: Float = 2f
+    ): Axes {
+        require(x.size == y.size)
+        series.add(PlotSeries(PlotKind.AREA, x, y, label, color, lineWidth = lineWidth))
+        return this
+    }
+
+    fun area(x: NDArray, y: NDArray, label: String? = null, color: Int = Palette.BLUE): Axes =
+        area(x.toDoubleArray(), y.toDoubleArray(), label, color)
+
+    fun step(
+        x: DoubleArray,
+        y: DoubleArray,
+        label: String? = null,
+        color: Int = Palette.PURPLE,
+        lineWidth: Float = 2f
+    ): Axes {
+        require(x.size == y.size)
+        series.add(PlotSeries(PlotKind.STEP, x, y, label, color, lineWidth = lineWidth))
+        return this
+    }
+
+    fun step(x: NDArray, y: NDArray, label: String? = null, color: Int = Palette.PURPLE): Axes =
+        step(x.toDoubleArray(), y.toDoubleArray(), label, color)
+
+    fun errorBar(
+        x: DoubleArray,
+        y: DoubleArray,
+        errors: DoubleArray,
+        label: String? = null,
+        color: Int = Palette.RED
+    ): Axes {
+        require(x.size == y.size && errors.size == y.size)
+        series.add(PlotSeries(PlotKind.ERRORBAR, x, y, label, color, errors = errors))
+        return this
+    }
+
+    fun barh(
+        labels: List<String>,
+        values: DoubleArray,
+        label: String? = null,
+        color: Int = Palette.GREEN
+    ): Axes {
+        require(labels.size == values.size)
+        series.add(
+            PlotSeries(
+                PlotKind.BARH,
+                DoubleArray(values.size) { it.toDouble() },
+                values,
+                label,
+                color,
+                labels
+            )
+        )
+        return this
+    }
+
+    fun stackedBar(
+        labels: List<String>,
+        values: List<DoubleArray>,
+        seriesLabels: List<String>,
+        colors: IntArray = Palette.SERIES
+    ): Axes {
+        require(values.isNotEmpty() && values.all { it.size == labels.size })
+        require(seriesLabels.size == values.size)
+        val totals = DoubleArray(labels.size) { index -> values.sumOf { it[index] } }
+        series.add(
+            PlotSeries(
+                PlotKind.STACKED_BAR,
+                DoubleArray(labels.size) { it.toDouble() },
+                totals,
+                null,
+                Palette.BLUE,
+                labels,
+                stacks = values.toTypedArray(),
+                stackLabels = seriesLabels,
+                stackColors = colors
+            )
+        )
+        return this
+    }
+
+    fun box(
+        labels: List<String>,
+        values: List<DoubleArray>,
+        label: String? = null,
+        color: Int = Palette.ORANGE
+    ): Axes {
+        require(values.isNotEmpty() && values.size == labels.size)
+        series.add(
+            PlotSeries(
+                PlotKind.BOX,
+                DoubleArray(labels.size) { it.toDouble() },
+                DoubleArray(labels.size),
+                label,
+                color,
+                labels,
+                stacks = values.toTypedArray()
+            )
+        )
+        return this
+    }
+
+    fun heatmap(matrix: NDArray, label: String? = null): Axes {
+        require(matrix.ndim == 2)
+        series.add(PlotSeries(PlotKind.HEATMAP, DoubleArray(0), DoubleArray(0), label, Palette.BLUE, matrix = matrix))
+        return this
+    }
+
     fun pie(values: DoubleArray, labels: List<String>): Axes {
         require(values.isNotEmpty() && values.size == labels.size && values.sum() > 0)
         series.add(PlotSeries(PlotKind.PIE, DoubleArray(values.size) { it.toDouble() }, values, null, Palette.BLUE, labels))
@@ -140,7 +254,7 @@ class Axes internal constructor(
     }
 }
 
-internal enum class PlotKind { LINE, SCATTER, BAR, HIST, PIE }
+internal enum class PlotKind { LINE, SCATTER, BAR, HIST, PIE, AREA, STEP, ERRORBAR, BARH, STACKED_BAR, BOX, HEATMAP }
 
 internal class PlotSeries(
     val kind: PlotKind,
@@ -151,7 +265,12 @@ internal class PlotSeries(
     val labels: List<String> = emptyList(),
     val edges: DoubleArray? = null,
     val lineWidth: Float = 2f,
-    val markerSize: Float = 3.5f
+    val markerSize: Float = 3.5f,
+    val errors: DoubleArray? = null,
+    val stacks: Array<DoubleArray>? = null,
+    val stackLabels: List<String> = emptyList(),
+    val stackColors: IntArray = intArrayOf(),
+    val matrix: NDArray? = null
 )
 
 internal object Palette {
@@ -172,6 +291,7 @@ internal interface DrawTarget {
     fun line(x1: Float, y1: Float, x2: Float, y2: Float, color: Int, width: Float = 1f)
     fun circle(x: Float, y: Float, radius: Float, color: Int, fill: Boolean = true)
     fun polyline(points: FloatArray, color: Int, width: Float = 2f)
+    fun polygon(points: FloatArray, color: Int)
     fun text(x: Float, y: Float, text: String, color: Int, size: Float, align: Int = 0)
     fun pieSlice(cx: Float, cy: Float, radius: Float, startDegrees: Float, sweepDegrees: Float, color: Int)
 }
@@ -221,26 +341,48 @@ internal object PlotRenderer {
         var maxY = Double.NEGATIVE_INFINITY
         fun tx(value: Double): Double = if (axes.logX) kotlin.math.ln(value) else value
         fun ty(value: Double): Double = if (axes.logY) kotlin.math.ln(value) else value
+        fun includeX(value: Double) {
+            if (!axes.logX || value > 0) { minX = min(minX, tx(value)); maxX = max(maxX, tx(value)) }
+        }
+        fun includeY(value: Double) {
+            if (!axes.logY || value > 0) { minY = min(minY, ty(value)); maxY = max(maxY, ty(value)) }
+        }
         for (series in axes.series) {
-            if (series.kind == PlotKind.HIST && series.edges != null) {
-                minX = min(minX, tx(series.edges.first()))
-                maxX = max(maxX, tx(series.edges.last()))
-                minY = min(minY, ty(0.0))
-                maxY = max(maxY, ty(series.y.max()))
-            } else if (series.kind == PlotKind.BAR) {
-                minX = min(minX, tx(-0.5))
-                maxX = max(maxX, tx(series.x.size - 0.5))
-                minY = min(minY, ty(0.0))
-                maxY = max(maxY, ty(series.y.max()))
-            } else {
-                for (i in series.x.indices) {
-                    if (!axes.logX || series.x[i] > 0) {
-                        minX = min(minX, tx(series.x[i]))
-                        maxX = max(maxX, tx(series.x[i]))
+            when (series.kind) {
+                PlotKind.HIST -> {
+                    series.edges?.let {
+                        includeX(it.first()); includeX(it.last())
+                        includeY(0.0); includeY(series.y.max())
                     }
-                    if (!axes.logY || series.y[i] > 0) {
-                        minY = min(minY, ty(series.y[i]))
-                        maxY = max(maxY, ty(series.y[i]))
+                }
+                PlotKind.BAR, PlotKind.STACKED_BAR, PlotKind.BOX -> {
+                    includeX(-0.5); includeX(series.x.size - 0.5)
+                    includeY(0.0)
+                    if (series.kind == PlotKind.BOX) {
+                        series.stacks?.forEach { values -> values.forEach { includeY(it) } }
+                    } else {
+                        includeY(series.y.max())
+                    }
+                }
+                PlotKind.BARH -> {
+                    includeX(0.0); includeX(series.y.max())
+                    includeY(-0.5); includeY(series.y.size - 0.5)
+                }
+                PlotKind.HEATMAP -> {
+                    val matrix = series.matrix ?: continue
+                    includeX(0.0); includeX(matrix.shape[1].toDouble())
+                    includeY(0.0); includeY(matrix.shape[0].toDouble())
+                }
+                PlotKind.ERRORBAR -> {
+                    for (i in series.x.indices) {
+                        includeX(series.x[i])
+                        val error = series.errors?.getOrNull(i) ?: 0.0
+                        includeY(series.y[i] - error); includeY(series.y[i] + error)
+                    }
+                }
+                else -> {
+                    for (i in series.x.indices) {
+                        includeX(series.x[i]); includeY(series.y[i])
                     }
                 }
             }
@@ -283,12 +425,27 @@ internal object PlotRenderer {
         }
         target.line(left, bottom, right, bottom, axisColor, 1.2f)
         target.line(left, top, left, bottom, axisColor, 1.2f)
+        fun mapX(value: Double): Float {
+            val transformed = if (axes.logX) kotlin.math.ln(value) else value
+            return left + ((transformed - bounds.minX) / (bounds.maxX - bounds.minX) * (right - left)).toFloat()
+        }
+        fun mapY(value: Double): Float {
+            val transformed = if (axes.logY) kotlin.math.ln(value) else value
+            return bottom - ((transformed - bounds.minY) / (bounds.maxY - bounds.minY) * (bottom - top)).toFloat()
+        }
         for (series in axes.series) {
-            if (series.kind == PlotKind.BAR && series.labels.isNotEmpty()) {
-                for (i in series.labels.indices) {
-                    val x = left + ((series.x[i] - bounds.minX) / (bounds.maxX - bounds.minX) * (right - left)).toFloat()
-                    target.text(x, bottom + 29, series.labels[i], axisColor, 8f, 1)
+            when (series.kind) {
+                PlotKind.BAR, PlotKind.STACKED_BAR, PlotKind.BOX -> {
+                    series.labels.forEachIndexed { index, label ->
+                        target.text(mapX(series.x[index]), bottom + 29, label, axisColor, 8f, 1)
+                    }
                 }
+                PlotKind.BARH -> {
+                    series.labels.forEachIndexed { index, label ->
+                        target.text(left - 8, mapY(index.toDouble()) + 3, label, axisColor, 8f, 2)
+                    }
+                }
+                else -> Unit
             }
         }
         if (axes.xLabel.isNotEmpty()) target.text((left + right) / 2, bottom + 38, axes.xLabel, axisColor, 11f, 1)
@@ -304,13 +461,45 @@ internal object PlotRenderer {
             when (series.kind) {
                 PlotKind.LINE -> {
                     val points = FloatArray(series.x.size * 2)
-                    for (i in series.x.indices) {
-                        points[2 * i] = px(series.x[i]); points[2 * i + 1] = py(series.y[i])
-                    }
+                    for (i in series.x.indices) { points[2 * i] = px(series.x[i]); points[2 * i + 1] = py(series.y[i]) }
                     target.polyline(points, series.color, series.lineWidth)
+                }
+                PlotKind.AREA -> {
+                    if (series.x.isEmpty()) continue
+                    val linePoints = FloatArray(series.x.size * 2)
+                    for (i in series.x.indices) { linePoints[2 * i] = px(series.x[i]); linePoints[2 * i + 1] = py(series.y[i]) }
+                    val polygon = FloatArray((series.x.size + 2) * 2)
+                    polygon[0] = linePoints[0]; polygon[1] = py(bounds.minY)
+                    linePoints.copyInto(polygon, 2)
+                    polygon[polygon.size - 2] = linePoints[linePoints.size - 2]
+                    polygon[polygon.size - 1] = py(bounds.minY)
+                    target.polygon(polygon, withAlpha(series.color, 0x55))
+                    target.polyline(linePoints, series.color, series.lineWidth)
+                }
+                PlotKind.STEP -> {
+                    if (series.x.isEmpty()) continue
+                    val points = ArrayList<Float>(series.x.size * 4)
+                    points.add(px(series.x[0])); points.add(py(series.y[0]))
+                    for (i in 1 until series.x.size) {
+                        points.add(px(series.x[i])); points.add(py(series.y[i - 1]))
+                        points.add(px(series.x[i])); points.add(py(series.y[i]))
+                    }
+                    target.polyline(points.toFloatArray(), series.color, series.lineWidth)
                 }
                 PlotKind.SCATTER -> {
                     for (i in series.x.indices) target.circle(px(series.x[i]), py(series.y[i]), series.markerSize, series.color)
+                }
+                PlotKind.ERRORBAR -> {
+                    val errors = series.errors ?: continue
+                    for (i in series.x.indices) {
+                        val x = px(series.x[i])
+                        val low = py(series.y[i] - errors[i])
+                        val high = py(series.y[i] + errors[i])
+                        target.line(x, low, x, high, series.color, 1.4f)
+                        target.line(x - 3f, low, x + 3f, low, series.color, 1.4f)
+                        target.line(x - 3f, high, x + 3f, high, series.color, 1.4f)
+                        target.circle(x, py(series.y[i]), 2.5f, series.color)
+                    }
                 }
                 PlotKind.BAR -> {
                     val step = (right - left) / series.x.size
@@ -318,6 +507,68 @@ internal object PlotRenderer {
                     for (i in series.x.indices) {
                         val x = px(series.x[i])
                         target.rect(x - barWidth / 2, py(series.y[i]), x + barWidth / 2, py(0.0), series.color, true)
+                    }
+                }
+                PlotKind.BARH -> {
+                    val step = (bottom - top) / series.y.size
+                    val barHeight = step * 0.7f
+                    for (i in series.y.indices) {
+                        val y = py(i.toDouble())
+                        target.rect(px(0.0), y - barHeight / 2, px(series.y[i]), y + barHeight / 2, series.color, true)
+                    }
+                }
+                PlotKind.STACKED_BAR -> {
+                    val stacks = series.stacks ?: continue
+                    val step = (right - left) / series.x.size
+                    val barWidth = step * 0.7f
+                    for (i in stacks.first().indices) {
+                        var cumulative = 0.0
+                        for (k in stacks.indices) {
+                            val value = stacks[k][i]
+                            val color = if (series.stackColors.isNotEmpty()) series.stackColors[k % series.stackColors.size] else Palette.SERIES[k % Palette.SERIES.size]
+                            val x = px(series.x[i])
+                            target.rect(x - barWidth / 2, py(cumulative + value), x + barWidth / 2, py(cumulative), color, true)
+                            cumulative += value
+                        }
+                    }
+                }
+                PlotKind.BOX -> {
+                    val stacks = series.stacks ?: continue
+                    val step = (right - left) / stacks.size
+                    val width = step * 0.45f
+                    for (i in stacks.indices) {
+                        val values = stacks[i].sortedArray()
+                        if (values.isEmpty()) continue
+                        val q1 = quantile(values, 0.25)
+                        val median = quantile(values, 0.50)
+                        val q3 = quantile(values, 0.75)
+                        val x = px(series.x[i])
+                        val low = values.first()
+                        val high = values.last()
+                        target.line(x, py(low), x, py(high), series.color, 1.3f)
+                        target.line(x, py(low), x + width / 2, py(low), series.color, 1.3f)
+                        target.line(x, py(high), x + width / 2, py(high), series.color, 1.3f)
+                        target.rect(x - width / 2, py(q3), x + width / 2, py(q1), withAlpha(series.color, 0x66), true)
+                        target.rect(x - width / 2, py(q3), x + width / 2, py(q1), series.color, false)
+                        target.line(x - width / 2, py(median), x + width / 2, py(median), series.color, 2f)
+                    }
+                }
+                PlotKind.HEATMAP -> {
+                    val matrix = series.matrix ?: continue
+                    var low = Double.POSITIVE_INFINITY
+                    var high = Double.NEGATIVE_INFINITY
+                    for (r in 0 until matrix.shape[0]) for (c in 0 until matrix.shape[1]) {
+                        low = min(low, matrix.get(r, c)); high = max(high, matrix.get(r, c))
+                    }
+                    val rows = matrix.shape[0]
+                    val cols = matrix.shape[1]
+                    val cellWidth = (right - left) / cols
+                    val cellHeight = (bottom - top) / rows
+                    for (r in 0 until rows) for (c in 0 until cols) {
+                        val ratio = if (high == low) 0.5 else (matrix.get(r, c) - low) / (high - low)
+                        target.rect(left + c * cellWidth, top + r * cellHeight,
+                            left + (c + 1) * cellWidth, top + (r + 1) * cellHeight,
+                            heatColor(ratio), true)
                     }
                 }
                 PlotKind.HIST -> {
@@ -329,6 +580,25 @@ internal object PlotRenderer {
                 PlotKind.PIE -> Unit
             }
         }
+    }
+
+    private fun quantile(sorted: DoubleArray, q: Double): Double {
+        if (sorted.isEmpty()) return 0.0
+        val position = q * (sorted.size - 1)
+        val lower = position.toInt()
+        val upper = min(lower + 1, sorted.size - 1)
+        val fraction = position - lower
+        return sorted[lower] * (1 - fraction) + sorted[upper] * fraction
+    }
+
+    private fun withAlpha(color: Int, alpha: Int): Int = (color and 0x00FFFFFF) or (alpha shl 24)
+
+    private fun heatColor(ratio: Double): Int {
+        val t = ratio.coerceIn(0.0, 1.0)
+        val red = (30 + 225 * t).toInt().coerceIn(0, 255)
+        val green = (80 + 100 * (1 - kotlin.math.abs(t - 0.5) * 2)).toInt().coerceIn(0, 255)
+        val blue = (200 - 170 * t).toInt().coerceIn(0, 255)
+        return (0xFF shl 24) or (red shl 16) or (green shl 8) or blue
     }
 
     private fun drawLegend(axes: Axes, target: DrawTarget, right: Float, top: Float) {
@@ -403,6 +673,16 @@ private class AndroidDrawTarget(private val canvas: Canvas) : DrawTarget {
         canvas.drawPath(path, paint)
     }
 
+    override fun polygon(points: FloatArray, color: Int) {
+        if (points.size < 6) return
+        paint.color = color; paint.style = Paint.Style.FILL
+        val path = Path()
+        path.moveTo(points[0], points[1])
+        for (i in 2 until points.size step 2) path.lineTo(points[i], points[i + 1])
+        path.close()
+        canvas.drawPath(path, paint)
+    }
+
     override fun text(x: Float, y: Float, text: String, color: Int, size: Float, align: Int) {
         paint.color = color; paint.style = Paint.Style.FILL; paint.textSize = size
         paint.textAlign = when (align) {
@@ -445,6 +725,12 @@ private class SvgDrawTarget(private val width: Int, private val height: Int) : D
         if (points.size < 4) return
         val pairs = (0 until points.size step 2).joinToString(" ") { "${f(points[it])},${f(points[it + 1])}" }
         builder.append("<polyline points=\"$pairs\" fill=\"none\" stroke=\"${colorHex(color)}\" stroke-width=\"${f(width)}\"/>\n")
+    }
+
+    override fun polygon(points: FloatArray, color: Int) {
+        if (points.size < 6) return
+        val pairs = (0 until points.size step 2).joinToString(" ") { "${f(points[it])},${f(points[it + 1])}" }
+        builder.append("<polygon points=\"$pairs\" fill=\"${colorHex(color)}\"/>\n")
     }
 
     override fun text(x: Float, y: Float, text: String, color: Int, size: Float, align: Int) {

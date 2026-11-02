@@ -42,8 +42,8 @@
 
 - 43 项 NumPy/mpmath 参考值一致性校验，JVM/Android 全部通过；
 - JNI FFT 相对 Kotlin 回退约 62×；原生 matmul 让 OLS 从 46.9 ms 降至 13.7 ms；
-- 详见 [bench/NUMPY_SCIPY_BENCHMARK.md](bench/NUMPY_SCIPY_BENCHMARK.md) 与
-  [report/andas-technical-report.pdf](report/andas-technical-report.pdf)。
+- 详见 [bench/NUMPY_SCIPY_BENCHMARK.md](../bench/NUMPY_SCIPY_BENCHMARK.md) 与
+  [report/andas-technical-report.pdf](../report/andas-technical-report.pdf)。
 
 ## 兼容性
 

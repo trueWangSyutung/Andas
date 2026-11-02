@@ -55,40 +55,39 @@ fun PaperExperimentScreen(
             )
         }
     ) { padding ->
-        Row(
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            // 左侧实验选择
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .background(Color(0xFFF5F5F5))
-            ) {
-                ExperimentSelection(
-                    onExperimentSelect = { selectedExperiment = it }
-                )
-            }
-            
-            // 右侧实验详情
-            Box(
-                modifier = Modifier
-                    .weight(2f)
-                    .background(Color.White)
-            ) {
-                when (selectedExperiment) {
-                    ExperimentType.JVM_SIZE -> JVMSizeExperiment(context)
-                    ExperimentType.PYTHON_CONSISTENCY -> PythonConsistencyExperiment(context)
-                    null -> Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "请选择左侧的实验项目",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = Color.Gray
-                        )
+            if (maxWidth >= 700.dp) {
+                Row(modifier = Modifier.fillMaxSize()) {
+                    Box(modifier = Modifier.weight(1f).background(Color(0xFFF5F5F5))) {
+                        ExperimentSelection(onExperimentSelect = { selectedExperiment = it })
+                    }
+                    Box(modifier = Modifier.weight(2f).background(Color.White)) {
+                        when (selectedExperiment) {
+                            ExperimentType.JVM_SIZE -> JVMSizeExperiment(context)
+                            ExperimentType.PYTHON_CONSISTENCY -> PythonConsistencyExperiment(context)
+                            null -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Text("请选择左侧的实验项目", style = MaterialTheme.typography.bodyLarge, color = Color.Gray)
+                            }
+                        }
+                    }
+                }
+            } else if (selectedExperiment == null) {
+                ExperimentSelection(onExperimentSelect = { selectedExperiment = it })
+            } else {
+                Column(Modifier.fillMaxSize()) {
+                    TextButton(onClick = { selectedExperiment = null }) {
+                        Text("← 返回实验列表")
+                    }
+                    Box(Modifier.weight(1f)) {
+                        when (selectedExperiment) {
+                            ExperimentType.JVM_SIZE -> JVMSizeExperiment(context)
+                            ExperimentType.PYTHON_CONSISTENCY -> PythonConsistencyExperiment(context)
+                            null -> Unit
+                        }
                     }
                 }
             }

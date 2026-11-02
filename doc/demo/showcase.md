@@ -1,9 +1,10 @@
 # Demo 应用
 
-仓库包含两个互补的 Demo 入口：
+`app` 是 **MULLION 驱动的完整 Demo**，默认启动入口即 MULLION 界面，包含全部原有页面与新增数值能力：
 
-1. **章节式 Demo**：按 SDK 初始化、Series、DataFrame、异步、JNI、性能、批处理逐章运行；
-2. **MULLION 功能展廊**：用自适应导航与分栏展示 NDArray、SciPy、绘图、回归、转换与扩展注解。
+- **指南**：7 个章节（初始化、Series、DataFrame、异步、JNI、性能、CSV 批处理），每章示例可点击“运行示例”；
+- **数值**：7 项能力（NDArray、Stats、Regression、基础绘图、更多图形、pandas ↔ numpy、扩展注解），结果实时计算；
+- **论文**：JVM/Python 一致性与性能实验，可点击“开始真实实验”。
 
 ## 运行
 
@@ -12,7 +13,7 @@
 adb shell am start -n cn.ac.oac.demo.andas/.MainActivity
 ```
 
-从首页点击 **“打开 MULLION 自适应功能展廊”**，或直接启动：
+安装后默认启动 MULLION 入口；也可显式启动：
 
 ```bash
 adb shell am start -n cn.ac.oac.demo.andas/.MullionShowcaseActivity
@@ -22,12 +23,14 @@ adb shell am start -n cn.ac.oac.demo.andas/.MullionShowcaseActivity
 
 展廊使用 [MULLION](https://github.com/Mullion-Official/Mullion-Android-Kotlin-Compose) 的
 `MullionTheme`、`MullionWindowProvider`、`AdaptiveScaffold`、`MultiPane` 与 `OrbitNav`：
-窄屏使用 BottomBar + 单栏，宽屏自动切换 Rail/Drawer 与 2–3 栏。业务 Screen 中没有
-`if (width > 600)`。
+窄屏使用 BottomBar + 单栏，宽屏自动切换 Rail/Drawer 与 2–3 栏。章节与论文页面在
+窄屏自动从双栏切成“列表 → 详情”，避免文字被压成单列。
 
-![MULLION 功能展廊](images/mullion-list.png)
+![MULLION 默认入口：学习指南](images/mullion-home.png)
 
-![功能详情与实时结果](images/mullion-detail.png)
+![更多图形：热力图、箱线图、堆叠柱、横向柱](images/mullion-charts.png)
+
+![论文实验在窄屏自动切换为单栏](images/mullion-paper.png)
 
 展廊包含：
 
@@ -36,7 +39,8 @@ adb shell am start -n cn.ac.oac.demo.andas/.MullionShowcaseActivity
 | NumPy · NDArray | 创建/reshape/广播/matmul、`Linalg.det`、FFT |
 | SciPy · Stats | 正态 CDF、t 检验、中位数 |
 | SciPy · Regression | 多元线性回归系数、截距与 R² |
-| Matplotlib · Figure | 折线 + 散点渲染为 Bitmap |
+| Matplotlib · Figure | 折线 + 面积 + 误差棒 Bitmap |
+| Matplotlib · 更多图形 | 热力图、箱线图、堆叠柱、横向柱、阶梯/面积子图 |
 | pandas ↔ numpy | `DataFrame.toNDArray()`、`toDataFrame()` 与 NaN/null |
 | 扩展与注解 | `AndasExtensions` 注册与 `@AndasApi` 系列注解 |
 

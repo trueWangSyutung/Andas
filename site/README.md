@@ -11,7 +11,7 @@
 | 用户指南 | `doc/charter*/**.md` |
 | 快速开始 | `QUICK_START.md` |
 | API 参考 | `API_REFERENCE.md` |
-| 版本更新 | `CHANGELOG_0.1.5.md` |
+| 版本更新 | `changelog/CHANGELOG_0.2.1.md` |
 | 基准测试报告 | `BENCHMARK_REPORT.md` |
 | 实验复现 | `bench/README.md` |
 | 英文技术报告 | `report/` + `site/docs/benchmark/english-report.md` |

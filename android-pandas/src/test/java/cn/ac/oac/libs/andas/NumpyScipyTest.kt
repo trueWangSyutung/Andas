@@ -300,4 +300,36 @@ class NumpyScipyTest {
         assertEquals(255.0, ImageOps.threshold(ImageOps.grayscale(rgb), 50.0).get(0, 0), 0.0)
     }
 
+
+    @Test
+    fun plotGallerySupportsMoreChartTypes() {
+        val figure = Figure(900, 600, rows = 2, cols = 2)
+        figure.axes(0, 0).apply {
+            area(doubleArrayOf(0.0, 1.0, 2.0), doubleArrayOf(1.0, 4.0, 9.0), "area")
+            step(doubleArrayOf(0.0, 1.0, 2.0), doubleArrayOf(2.0, 3.0, 1.0), "step")
+        }
+        figure.axes(0, 1).apply {
+            errorBar(doubleArrayOf(0.0, 1.0, 2.0), doubleArrayOf(3.0, 5.0, 4.0), doubleArrayOf(0.2, 0.4, 0.3), "error")
+            barh(listOf("A", "B", "C"), doubleArrayOf(4.0, 8.0, 6.0), "barh")
+        }
+        figure.axes(1, 0).apply {
+            stackedBar(
+                listOf("Q1", "Q2", "Q3"),
+                listOf(doubleArrayOf(1.0, 2.0, 1.5), doubleArrayOf(2.0, 1.0, 2.5)),
+                listOf("线上", "线下")
+            )
+        }
+        figure.axes(1, 1).apply {
+            box(listOf("A", "B"), listOf(doubleArrayOf(1.0, 2.0, 3.0, 4.0), doubleArrayOf(2.0, 2.5, 3.5, 5.0)))
+        }
+        val svg = figure.renderSvg()
+        assertTrue(svg.contains("<polygon"))
+        assertTrue(svg.contains("<rect"))
+        assertTrue(svg.contains("Q1"))
+
+        val heatmap = Figure(400, 300)
+        heatmap.axes().heatmap(NDArray.from2D(arrayOf(doubleArrayOf(1.0, 2.0), doubleArrayOf(3.0, 4.0))))
+        assertTrue(heatmap.renderSvg().contains("<rect"))
+    }
+
 }

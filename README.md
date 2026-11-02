@@ -4,7 +4,7 @@
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.0-orange.svg)](https://kotlinlang.org/)
 [![Android](https://img.shields.io/badge/Android-26+-green.svg)](https://developer.android.com/)
 
-> **项目状态**：`0.2.0` 已发布，核心 API 稳定；欢迎通过 Issue 反馈问题与性能数据。
+> **项目状态**：`0.2.1` 已发布，核心 API 稳定；欢迎通过 Issue 反馈问题与性能数据。
 
 [![](https://jitpack.io/v/trueWangSyutung/Andas.svg)](https://jitpack.io/#trueWangSyutung/Andas)
 
@@ -13,7 +13,7 @@
 Andas SDK (Android Data Analysis System) 是一个专为 Android 平台设计的高性能数据处理库，灵感来源于 Python 的 pandas 库。通过 JNI 技术集成 C++ 原生代码和 OpenMP 并行计算，实现了显著的性能提升。
 
 ## 📋 版本信息
-**当前版本**: `0.2.0` (2026-11-02)
+**当前版本**: `0.2.1` (2026-11-02)
 
 ### 核心特性
 
@@ -32,11 +32,11 @@ Andas SDK (Android Data Analysis System) 是一个专为 Android 平台设计的
 
 > 文档站点（GitHub Pages 默认域名）：<https://truewangsyutung.github.io/Andas/>
 
-### 最新性能优化（0.2.0）
+### 最新性能优化（0.2.1）
 
 CSV 读取已从“整文件读入 → 每行 Map → 转置”重构为**流式列式解析**，
 统计、排序、筛选、分组、连接等操作也改为单次遍历或哈希算法。
-详见 [CHANGELOG_0.2.0.md](CHANGELOG_0.2.0.md)；
+详见 [CHANGELOG_0.2.1.md](changelog/CHANGELOG_0.2.1.md)；
 完整的实验数据、图表与复现脚本见 [BENCHMARK_REPORT.md](BENCHMARK_REPORT.md) 和 [bench/README.md](bench/README.md)。
 
 ## 快速开始
@@ -58,7 +58,7 @@ dependencyResolutionManagement {
 
 ```kotlin
 dependencies {
-    implementation("com.github.trueWangSyutung:Andas:0.2.0")
+    implementation("com.github.trueWangSyutung:Andas:0.2.1")
 }
 ```
 
@@ -131,7 +131,7 @@ Andas/
 ├── BENCHMARK_REPORT.md      # 中文基准测试与技术报告
 ├── API_REFERENCE.md         # API 参考
 ├── QUICK_START.md           # 快速入门
-└── CHANGELOG_0.2.0.md       # 版本更新日志
+└── changelog/                # 版本更新日志
 ```
 
 ## 核心功能
@@ -261,6 +261,6 @@ val normalized = NativeMath.normalize(data)
 ---
 
 **说明**：请在引入生产环境前，结合自身数据规模与设备矩阵完成验证。版本发布记录见
-[CHANGELOG_0.2.0.md](CHANGELOG_0.2.0.md)。
+[CHANGELOG_0.2.1.md](changelog/CHANGELOG_0.2.1.md)。
 
-**项目状态**：0.2.0 已发布 · 功能完整 · 持续优化
+**项目状态**：0.2.1 已发布 · 功能完整 · 持续优化

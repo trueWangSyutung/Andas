@@ -5,7 +5,7 @@ Single source of truth:
   doc/                      -> site/docs/guide/
   QUICK_START.md            -> site/docs/quickstart.md
   API_REFERENCE.md          -> site/docs/api.md
-  CHANGELOG_0.2.0.md        -> site/docs/changelog.md
+  changelog/CHANGELOG_0.2.1.md -> site/docs/changelog.md
   BENCHMARK_REPORT.md       -> site/docs/benchmark/report.md
   bench/README.md           -> site/docs/benchmark/reproduce.md
   report/*.pdf|*.tex        -> site/docs/assets/
@@ -71,9 +71,9 @@ def sync_flat_docs() -> None:
     write(DOCS / "quickstart.md", quick)
 
     copy(ROOT / "API_REFERENCE.md", DOCS / "api.md")
-    changelog = (ROOT / "CHANGELOG_0.2.0.md").read_text(encoding="utf-8")
-    changelog = changelog.replace("(bench/NUMPY_SCIPY_BENCHMARK.md)", "(benchmark/numeric.md)")
-    changelog = changelog.replace("(report/andas-technical-report.pdf)", "(assets/andas-technical-report.pdf)")
+    changelog = (ROOT / "changelog/CHANGELOG_0.2.1.md").read_text(encoding="utf-8")
+    changelog = changelog.replace("(../bench/NUMPY_SCIPY_BENCHMARK.md)", "(benchmark/numeric.md)")
+    changelog = changelog.replace("(../report/andas-technical-report.pdf)", "(assets/andas-technical-report.pdf)")
     (DOCS / "changelog.md").write_text(changelog, encoding="utf-8")
 
 

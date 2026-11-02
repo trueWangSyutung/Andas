@@ -29,7 +29,7 @@ dependencyResolutionManagement {
 
 ```kotlin
 dependencies {
-    implementation("com.github.trueWangSyutung:Andas:0.2.0")
+    implementation("com.github.trueWangSyutung:Andas:0.2.1")
 }
 ```
 
