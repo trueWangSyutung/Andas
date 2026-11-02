@@ -108,8 +108,9 @@ export ANDROID_SERIAL=R8U8R8TGPZKFT8JB   # 你的手机 serial
 - `bench/results/android_physical.csv`：解析后的表；
 - `bench/results/android_adb_instrument.txt`：instrumentation 输出。
 
-本次设备（adb 读取）：Xiaomi M531DA / MediaTek MT6899 / Android 17 (API 37) /
-11.6 GB RAM / 1268×2756 @520 dpi / 256 MB test heap。
+本次设备（adb 读取）：Xiaomi M531DA / MediaTek MT6899（8 核，最高 3.4 GHz）/
+ARM Mali-G720 MC8（OpenGL ES 3.2 + Vulkan）/ 11.6 GB RAM + 12 GB swap /
+1268×2756 @520 dpi / 256 MB test heap。
 
 本次结果（M531DA / Android 17 / API 37 / 256 MB）：
 

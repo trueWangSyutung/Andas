@@ -253,7 +253,22 @@ Android 端只测 CSV 读取（计算路径在 JVM 中已单独评估，且 Andr
 ANDROID_SERIAL=R8U8R8TGPZKFT8JB ./bench/run_android_adb.sh
 ```
 
-设备：Samsung **M531DA**，Android **17（API 37）**，`Runtime.maxMemory() = 256 MB`。
+设备信息由 adb 直接读取：
+
+| 项目 | 值 |
+| --- | --- |
+| 设备 | Xiaomi **M531DA**（代号 `chagall`） |
+| SoC | MediaTek **MT6899**，8 核，`arm64-v8a` |
+| CPU | 8 核；cpu0 最高 2.2 GHz，cpu4 最高 3.2 GHz，cpu7 最高 3.4 GHz |
+| GPU | ARM **Mali-G720 MC8**，OpenGL ES 3.2，Vulkan（`ro.hardware.vulkan=mali`） |
+| RAM | 11,640,816 KiB（约 11.1 GiB），Swap 12,582,908 KiB |
+| 系统 | Android **17 / API 37**，build `CP2A.260605.016` |
+| 指纹 | `Xiaomi/chagall/chagall:17/CP2A.260605.016/OS4.0.3.0.XPTCNXM:user/release-keys` |
+| 屏幕 | 1268×2756，520 dpi |
+| 数据分区 | 478 GB（可用 270 GB） |
+| 测试堆上限 | `Runtime.maxMemory() = 256 MB` |
+| GPU 驱动 | `com.mediatek.mt6899.gamedriver`（Stable Game Driver） |
+| 连接 | USB adb，`ANDROID_SERIAL=R8U8R8TGPZKFT8JB` |
 测试代码在设备 cache 中生成 15 列 CSV 后读取，结果由 `bench/parse_android_bench.py` 写入
 `bench/results/android_physical.csv`，原始 logcat 为
 `bench/results/android_M531DA_adb.log`。
