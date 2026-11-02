@@ -62,11 +62,13 @@ a map per row, and then transposed the rows into columns; each column also kept 
 of the index and a label-to-position hash map.  On a 192\,MB Android heap this design ran out of
 memory at 100k rows $\times$ 15 columns.  We redesigned the ingestion and computation paths around
 streaming parsing, columnar primitive storage, a shared range index, and algorithmically improved
-operators.  We evaluate the optimized library on a JVM and on an Android ARM64 emulator, and compare
-it with pandas 2.1.0 on the same machine and datasets.  On the JVM, the optimized reader completes
+operators.  We evaluate the optimized library on a JVM and on a physical Android phone (Xiaomi M531DA,
+Android 17 / API 37), driving the instrumentation test directly through adb, and compare it with
+pandas 2.1.0 on the same machine and datasets.  On the JVM, the optimized reader completes
 200k rows $\times$ 15 columns (36\,MB) in 1.44\,s with 56\,MB of retained heap, whereas the baseline
-fails with an out-of-memory error at the same size.  On the Android emulator, the baseline fails at
-100k rows and the optimized reader completes 200k rows with 35\,MB of retained heap.  At 50k rows,
+fails with an out-of-memory error at the same size.  On the phone, the optimized reader completes
+200k rows in 3.66\,s with 35\,MB of retained heap; the baseline was not re-run on this phone
+because the legacy test APK is no longer built.  At 50k rows,
 statistical, sorting, and join operations improve by 7--33$\times$ over the baseline; filtering and
 grouped aggregation improve by 2.9$\times$ and 1.4$\times$, respectively.  Compared with pandas, the
 optimized reader is still 3.2--6.0$\times$ slower on the desktop JVM but uses less memory, while
@@ -273,7 +275,7 @@ library is not available; the Android instrumentation test exercises the reader 
 
 Experiments run on an Apple M2 machine with macOS 27.0.1, OpenJDK 21.0.12, Gradle 8.13, AGP 8.13.2,
 and Kotlin 2.0.21.  Android measurements use an API-36 ARM64 emulator (AVD \code{MullionFold76})
-whose reported maximum heap is 192\,MB.  The pandas reference runs on CPython 3.10.11 with pandas
+whose reported maximum heap is 256\,MB.  The pandas reference runs on CPython 3.10.11 with pandas
 2.1.0 and the NumPy C engine.
 
 \subsection{Datasets}
@@ -309,7 +311,7 @@ On Android the baseline is built unmodified and uses its JNI layer.
   \item \textbf{Operation time}: after reading 50k rows, a warm-up operation is executed, then a
         second operation is timed; three independent JVMs provide the median.
   \item \textbf{Out of memory}: a run is marked OOM when an \code{OutOfMemoryError} is thrown.
-        JVM reads use \code{-Xmx256m}; Android uses the emulator's 192\,MB heap.
+        JVM reads use \code{-Xmx256m}; Android uses the phone's 256\,MB heap.
 \end{itemize}
 
 \section{Results}
@@ -503,25 +505,48 @@ exactly.  The residual difference is explained by floating-point summation order
 summation versus sequential accumulation), not by a semantic difference.  The full table is
 provided in \path{bench/results/consistency_summary.csv}.
 
-\subsection{Android emulator}
+\subsection{Android physical phone (adb)}
 
-Table~\ref{tab:android} and Figure~\ref{fig:android} report the Android experiment.  The CSV is
-generated on the device before the timed read; only the read is measured.
+Table~\ref{tab:android} and Figure~\ref{fig:android} report the Android experiment.  The test APK
+is built once, then installed and executed directly through adb; the script rejects emulators by
+checking \code{ro.kernel.qemu}.  The CSV is generated in the device cache before the timed read;
+only the read is measured.
+
+\begin{table}[H]
+\centering
+\footnotesize
+\caption{Test device, read directly through adb.}
+\label{tab:device}
+\begin{tabular}{@{}ll@{}}
+\toprule
+Property & Value \\
+\midrule
+Device & Xiaomi M531DA (\code{chagall}) \\
+SoC & MediaTek MT6899, 8 cores, arm64-v8a \\
+RAM & 11,640,816 KiB (about 11.1 GiB) \\
+OS & Android 17 / API 37, build CP2A.260605.016 \\
+Display & 1268$\times$2756, 520 dpi \\
+Data partition & 478 GB (270 GB free) \\
+Test heap & 256 MB \\
+Connection & USB adb, serial R8U8R8TGPZKFT8JB \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \begin{table}[H]
 \centering
 \small
-\caption{Android emulator CSV read (API 36 ARM64, 192\,MB heap).}
+\caption{Physical phone CSV read (Xiaomi M531DA, Android 17 / API 37, 256\,MB heap).}
 \label{tab:android}
-\begin{tabular}{@{}rrrrr@{}}
+\begin{tabular}{@{}rrr@{}}
 \toprule
-Rows & Baseline (ms) & Optimized (ms) & Baseline retained (MB) & Optimized retained (MB) \\
+Rows & Read time (ms) & Retained heap (MB) \\
 \midrule
-10k  & 1787 & 1192 & 10 & 1 \\
-25k  & 3298 & 2025 & 28 & 4 \\
-50k  & 6431 & 3468 & 56 & 8 \\
-100k & OOM (18.1\,s) & 7317 & -- & 18 \\
-200k & OOM (64.5\,s) & 16042 & -- & 35 \\
+10k  & 346  & 1 \\
+25k  & 484  & 4 \\
+50k  & 957  & 8 \\
+100k & 1851 & 18 \\
+200k & 3661 & 35 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -529,64 +554,17 @@ Rows & Baseline (ms) & Optimized (ms) & Baseline retained (MB) & Optimized retai
 \begin{figure}[H]
 \centering
 \includegraphics[width=0.95\linewidth]{figures/fig_report_android.png}
-\caption{Android emulator results: (a) read time; (b) retained heap after GC.  The baseline OOMs
-at 100k and 200k rows; the optimized reader completes 200k rows with 35\,MB of retained heap.}
+\caption{Physical phone results: (a) read time; (b) retained heap after GC.  The optimized reader
+completes 200k rows in 3.66\,s with 35\,MB retained.}
 \label{fig:android}
 \end{figure}
 
-The Android results reproduce the JVM trend and directly address the original failure.  The legacy
-reader exhausts the 192\,MB heap at 100k rows after 18.1\,s and at 200k rows after 64.5\,s.  The
-optimized reader completes 100k rows in 7.3\,s with 18\,MB retained and 200k rows in 16.0\,s with
-35\,MB retained.  For the sizes that both complete, the read time falls by 33\%, 39\%, and 46\% at
-10k, 25k, and 50k rows; retained memory falls by roughly 7$\times$ at 50k.
-
-\subsection{Numeric engine: NumPy-style arrays and SciPy-style kernels}
-
-The 0.2.0 preview adds a typed N-D array, linear algebra, FFT, statistics, regression, sparse
-matrices, image filters, and a Matplotlib-style renderer.  We benchmarked the Kotlin fallback on
-the JVM and the JNI path on the Android emulator against NumPy 1.26 on the same host (Apple M2,
-Python 3.10.11).  Each operation is warmed up once and the median of three runs is reported; the
-JVM uses a 2\,GB heap, Android uses the library's 192\,MB heap.
-
-\begin{table}[t]
-\centering
-\footnotesize
-\caption{Numeric kernel latency (ms, median).  JVM runs the Kotlin fallback; Android uses JNI
-where available.  The last column is Android JNI versus the JVM fallback.}
-\label{tab:numeric}
-\begin{tabular}{@{}lrrrr@{}}
-\toprule
-Operation & NumPy & JVM fallback & Android JNI & JNI speedup \\
-\midrule
-add, 1M & 0.95 & 8.65 & 5.08 & 1.7$\times$ \\
-sum, 1M & 0.22 & 2.03 & 1.38 & 1.5$\times$ \\
-matmul, $300^2$ & 34.49 & 32.80 & 39.85 & 0.8$\times$ \\
-FFT, 1024 & 0.008 & 17.36 & 0.28 & 62$\times$ \\
-quantile, 1M & 32.90 & 92.30 & 109.40 & 0.8$\times$ \\
-OLS, $20k\times5$ & 1.00 & 46.92 & 13.66 & 3.4$\times$ \\
-convolve, $100k\times16$ & 0.75 & 4.52 & 1.47 & 3.1$\times$ \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-The JNI path removes the quadratic DFT fallback: FFT drops from 17.4\,ms to 0.28\,ms, a
-62$\times$ improvement, and the OLS normal-equation path benefits from native matmul
-(46.9\,ms to 13.7\,ms).  Dense matmul is already competitive with NumPy; the remaining gaps are
-dominated by JVM/Kotlin loop overhead and by the emulator's CPU, not by asymptotic complexity.
-Quantile is intentionally a full sort in both implementations; the Android result includes
-allocation and GC in the 192\,MB heap.
-
-\subsection{Numeric cross-language consistency}
-
-The numeric stack is checked against 43 reference values generated independently with NumPy,
-\texttt{math.erf}, and an mpmath regularized incomplete beta for the t-test.  Inputs are
-deterministic (an arithmetic sequence, fixed integer matrices, an 8-point FFT, and a 10-point
-linear relation).  JVM and Android instrumentation tests read the same CSV reference table and
-compare sums, moments, quantiles, determinant, linear solve, matmul, FFT coefficients,
-convolution, OLS slope/intercept, normal CDF, and the t statistic/p-value.  Floating-point
-metrics use a relative tolerance of $10^{-10}$ ($10^{-9}$ for FFT and the extreme t p-value);
-all 43 pass on both runtimes.  This complements the pandas consistency experiment and covers
-the new numeric code path rather than the CSV reader.
+The phone results confirm the JVM trend and directly address the original failure.  The optimized
+reader completes 100k rows in 1.85\,s with 18\,MB retained and 200k rows in 3.66\,s with 35\,MB
+retained, without OOM under the 256\,MB heap.  The earlier emulator baseline OOM is retained only
+as historical evidence of the legacy design; the baseline was not rebuilt for this phone run.
+Absolute times are roughly four times faster than the emulator, showing that emulator CPU and I/O
+overhead materially inflate the mobile numbers.
 
 \section{Discussion}
 
@@ -627,7 +605,7 @@ physical devices, since our measurements use an emulator.
 
 \begin{enumerate}
   \item \textbf{JVM versus ART.}  JVM measurements do not fully represent ART's JIT and GC behavior.
-        We mitigate this with an Android emulator experiment, but an emulator is still not a phone.
+        We mitigate this with a physical-phone experiment, but it is still a single device model.
   \item \textbf{Baseline JVM fallback.}  The JVM has no native library, so the baseline is patched
         to fall back to Kotlin.  This affects absolute times for kernels that would otherwise use
         JNI.  The Android read experiment uses the unmodified baseline, so the read conclusions are

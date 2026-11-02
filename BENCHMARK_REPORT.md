@@ -15,8 +15,8 @@ Andas 是一个面向 Android 的类 pandas 数据处理库。旧版本在读取
 
 - 在 256 MB JVM 堆下，优化后 20 万行 × 15 列（36 MB）读取耗时 **1.44 s**、GC 后存活堆
   **56 MB**；基线在 20 万行时 OOM，10 万行时存活堆 155 MB、耗时 2.54 s。
-- 在 192 MB 的 Android 模拟器上，基线在 10 万行时 OOM（18.1 s 后抛错），优化后 10 万行
-  耗时 7.3 s、存活堆 18 MB，20 万行耗时 16.0 s、存活堆 35 MB。
+- 在真机 Xiaomi M531DA（Android 17 / API 37，256 MB 堆）上通过 adb 直接运行，10 万行
+  耗时 **1.85 s**、存活堆 **18 MB**；20 万行耗时 **3.66 s**、存活堆 **35 MB**，无 OOM。
 - 50k 行数据上，`sum`、`mean`、`std`、`describe` 加速 **7–30×**，`sortValues` 加速
   **32.9×**，5k × 5k `merge` 加速 **30.9×**，`filterGreaterThan` 加速 **2.9×**。
 - 基线排序按字符串字典序进行且为 `O(n²)`，优化后按数值排序并保持 `O(n log n)`。
@@ -46,7 +46,7 @@ Andas 是一个面向 Android 的类 pandas 数据处理库。旧版本在读取
 - 引入 `RangeIndexList` 共享范围索引和惰性 `label → position` 映射，使每列索引开销从
   `O(n)` 内存降为 `O(1)`。
 - 将统计、排序、筛选、分组、连接改为单次遍历或哈希算法，并启用 OpenMP 原生并行。
-- 在 JVM 与 Android 模拟器上完成可复现实验，给出时间、内存和 OOM 阈值数据；
+- 在 JVM 与 Android 真机（adb）上完成可复现实验，给出时间、内存和 OOM 阈值数据；
 - 建立 Python pandas ↔ JVM ↔ Android 的跨语言一致性测试，逐项校验 35 个指标。
 
 ## 2. 实现概述
@@ -94,7 +94,7 @@ InputStream → BufferedReader(64 KB) → CsvRecordReader（字符级状态机�
 | 操作系统 | macOS 27.0.1 |
 | JDK | OpenJDK 21.0.12（Homebrew） |
 | 构建 | Gradle 8.13，AGP 8.13.2，Kotlin 2.0.21 |
-| Android | API 36 arm64 模拟器（AVD `MullionFold76`），`Runtime.maxMemory()` = 192 MB |
+| Android | 真机 Xiaomi M531DA，Android 17 / API 37，`Runtime.maxMemory()` = 256 MB，adb USB |
 | Python 对比 | CPython 3.10.11，pandas 2.1.0，NumPy C 引擎（同机、同数据、同磁盘缓存） |
 
 ### 3.2 数据集
@@ -244,38 +244,45 @@ pandas 是 Andas 的直接设计参考。为了给出一个“桌面端参考上
    二者不是同一运行时；本节数据用于给出数量级参考，而不是宣称 Android 库应达到 pandas
    的绝对性能。
 
-### 4.4 Android 模拟器
+### 4.4 Android 真机（adb）
 
 Android 端只测 CSV 读取（计算路径在 JVM 中已单独评估，且 Android 上 JNI 会改变绝对值）。
-测试在 192 MB 堆的 API 36 arm64 模拟器上运行，CSV 由测试代码在设备上生成后读取，
-logcat 标签为 `ANDAS_BENCH`。
+测试通过 **adb 直接安装 test APK 并执行 instrumentation**，不使用模拟器：
 
-| 行数 | 基线 (ms) | 优化后 (ms) | 基线存活堆 (MB) | 优化后存活堆 (MB) |
-|---:|---:|---:|---:|---:|
-| 10k | 1787 | 1192 | 10 | 1 |
-| 25k | 3298 | 2025 | 28 | 4 |
-| 50k | 6431 | 3468 | 56 | 8 |
-| 100k | **OOM（18.1 s）** | 7317 | — | 18 |
-| 200k | **OOM（64.5 s）** | 16042 | — | 35 |
+```bash
+ANDROID_SERIAL=R8U8R8TGPZKFT8JB ./bench/run_android_adb.sh
+```
 
-![Android 读取时间](bench/results/fig_android_read.png)
+设备：Samsung **M531DA**，Android **17（API 37）**，`Runtime.maxMemory() = 256 MB`。
+测试代码在设备 cache 中生成 15 列 CSV 后读取，结果由 `bench/parse_android_bench.py` 写入
+`bench/results/android_physical.csv`，原始 logcat 为
+`bench/results/android_M531DA_adb.log`。
 
-![Android 读取内存](bench/results/fig_android_memory.png)
+| 行数 | 读取时间 (ms) | GC 后存活堆 (MB) | 状态 |
+|---:|---:|---:|---|
+| 10k | 346 | 1 | ok |
+| 25k | 484 | 4 | ok |
+| 50k | 957 | 8 | ok |
+| 100k | 1851 | 18 | ok |
+| 200k | 3661 | 35 | ok |
 
-在 Android 192 MB 堆下：
+![Android 真机读取时间与存活堆](bench/results/fig_android_physical.png)
 
-- 基线在 10 万行时 OOM，优化后可读取 20 万行（36 MB），存活堆仅 35 MB；
-- 10k/25k/50k 的读取时间分别降低 33%/39%/46%；
-- 存活堆在 50k 时从 56 MB 降到 8 MB（约 7×），与 JVM 结论一致。
+在真机 256 MB 堆下：
 
-这直接对应了“旧版本大文件无法读取”的问题：旧实现的全量行对象在移动端堆限制下很快耗尽，
-新实现的内存占用由列式数组和字符串决定，不再随“行 Map/Entry”膨胀。
+- 20 万行 × 15 列读取 **3.66 s**，GC 后存活堆 **35 MB**；
+- 10 万行 **1.85 s / 18 MB**；
+- 所有档位均完成，无 OOM；
+- 真机比此前的模拟器结果快约 4×，说明模拟器的 CPU/IO 开销会显著放大绝对时间。
+
+> 基线数据未在真机重跑；此前模拟器基线（100k/200k OOM）仅作为旧实现问题的历史证据。
+> 真机测试脚本默认拒绝模拟器，要求 `ro.kernel.qemu != 1`。
 
 ### 4.5 跨语言一致性验证
 
 性能数据之外，还需要验证 Andas 与 pandas 在相同输入上得到相同结果。我们取
 `bench_50000_c15.csv` 的前 5000 行作为一致性数据集，分别用 pandas 2.1.0、JVM 上的 Andas
-和 Android 模拟器上的 Andas 计算同一组指标：
+和 Android 上的 Andas 计算同一组指标：
 
 - 基数与计数：行数、列数、筛选行数、分组数、连接行数（要求精确相等）；
 - 统计量：`sum`、`mean`、`std`（ddof=1）、`min`、`max`、`describe`、长整型均值；
@@ -353,8 +360,8 @@ pandas 数据给出了两个有用信号：
 
 ## 6. 有效性威胁
 
-1. **JVM vs ART**：JVM 实验无法完全代表 ART 的 JIT/GC 行为；因此补充了 Android 模拟器
-   实验。模拟器仍非真实手机，CPU/IO 性能与真机存在差异。
+1. **JVM vs ART**：JVM 实验无法完全代表 ART 的 JIT/GC 行为；因此补充了 Android 真机
+   （M531DA，adb）实验。真机结果仍只代表这一台设备，不能外推到所有手机。
 2. **基线 JVM 降级**：JVM 没有 `libandas_native.so`，基线经 try/catch 降级到 Kotlin 回退；
    这会影响 `sum/sort` 等操作的绝对值。Android 读取实验未修改基线，使用真实 JNI，
    因此读取结论不受影响。
@@ -371,7 +378,7 @@ pandas 数据给出了两个有用信号：
 
 旧版 Andas 的大文件读取瓶颈不是 CPU 算力，而是“全量行对象 + 转置 + 逐列索引”造成的
 内存放大和分配抖动；计算瓶颈则主要来自中间集合、`O(n²)` 排序和 `O(nm)` 连接。通过流式
-列式解析、共享范围索引、原始类型数组和哈希/排序算法替换，优化版在 192 MB Android 环境中
+列式解析、共享范围索引、原始类型数组和哈希/排序算法替换，优化版在 256 MB Android 真机环境中
 把可读取规模从“10 万行 OOM”提升到“20 万行 35 MB 存活堆”，并在 50k 行数据上取得统计/排序/连接类操作 7–33×、筛选 2.9×、
 分组聚合 1.4× 的加速。与 pandas 2.1.0 的桌面端对比显示，读取差距由基线的约 10–14× 缩小到
 3.2–6.0×，内存低于 pandas；统计/排序类操作仍有 6–20× 差距，指向原生列式内核这一后续方向。

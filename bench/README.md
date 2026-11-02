@@ -10,14 +10,14 @@ pandas 2.1.0 对比、Android instrumentation 测试与图表生成。原始数�
 | CSV 读取扩展性 | 10k–200k 行 × 15 列，固定 256 MB 堆 | 时间、GC 后堆、峰值堆、OOM |
 | 计算内核 | 50k 行上的统计、排序、筛选、分组、连接 | 操作耗时与加速比 |
 | pandas 对比 | 同机、同数据、CPython 3.10 + pandas 2.1.0 | 读取/计算对比表 |
-| Android | API 36 ARM64 模拟器，192 MB 堆 | 读取时间与存活堆 |
+| Android | 真机 Xiaomi M531DA，Android 17 / API 37，256 MB 堆，adb | 读取时间与存活堆 |
 | 图表 | 论文用折线图、柱状图 | `results/fig_*.png` |
 
 ## 2. 环境
 
 - Apple M2 / macOS 27.0.1 / JDK 21.0.12 / Gradle 8.13
 - Python 3.10.11 / pandas 2.1.0 / psutil
-- Android emulator：API 36 ARM64，`Runtime.maxMemory() = 192 MB`
+- Android 真机：Xiaomi M531DA，Android 17 / API 37，`Runtime.maxMemory() = 256 MB`，USB adb
 - 基线与优化版使用同一台机器、同一 JVM 参数、同一数据集；每档 3 次独立进程取中位数
 
 ## 3. 目录
@@ -89,18 +89,37 @@ python3 bench/plot_results.py
 
 输出 `bench/results/fig_*.png`；报告中的双面板图由 `report/make_report_figures.py` 生成。
 
-## 9. Android 实验
+## 9. Android 真机实验（adb）
 
-`android-pandas/src/androidTest/.../CsvBenchInstrumentedTest.kt` 会在设备上生成同样的
-15 列 CSV（10k–200k 行），通过 logcat 标签 `ANDAS_BENCH` 输出读取耗时和 GC 后存活堆。
+`android-pandas/src/androidTest/.../CsvBenchInstrumentedTest.kt` 在设备上生成 15 列 CSV
+（10k–200k 行），通过 logcat 标签 `ANDAS_BENCH` 输出读取耗时和 GC 后存活堆。
+
+真机脚本**不经过 Gradle connected test**，而是构建 test APK 后直接 `adb install` +
+`am instrument`；默认拒绝模拟器（`ro.kernel.qemu == 1`）：
 
 ```bash
-export ANDROID_USER_HOME="$PWD/.android-home"   # 避免写入 ~/.android
-adb logcat -c
-./gradlew :android-pandas:connectedDebugAndroidTest \
-  -Pandroid.testInstrumentationRunnerArguments.class=cn.ac.oac.libs.andas.CsvBenchInstrumentedTest
-adb logcat -d -s ANDAS_BENCH:I
+export ANDROID_SERIAL=R8U8R8TGPZKFT8JB   # 你的手机 serial
+./bench/run_android_adb.sh
 ```
+
+脚本产出：
+
+- `bench/results/android_<MODEL>_adb.log`：原始 logcat；
+- `bench/results/android_physical.csv`：解析后的表；
+- `bench/results/android_adb_instrument.txt`：instrumentation 输出。
+
+本次设备（adb 读取）：Xiaomi M531DA / MediaTek MT6899 / Android 17 (API 37) /
+11.6 GB RAM / 1268×2756 @520 dpi / 256 MB test heap。
+
+本次结果（M531DA / Android 17 / API 37 / 256 MB）：
+
+| rows | ms | retained MB |
+|---:|---:|---:|
+| 10k | 346 | 1 |
+| 25k | 484 | 4 |
+| 50k | 957 | 8 |
+| 100k | 1851 | 18 |
+| 200k | 3661 | 35 |
 
 基线的 Android 数据：把同一个测试文件复制到 `.baseline/android-pandas/src/androidTest/`
 后，在 `.baseline/` 目录执行同样的 Gradle 命令。
