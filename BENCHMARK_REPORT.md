@@ -16,7 +16,7 @@ Andas 是一个面向 Android 的类 pandas 数据处理库。旧版本在读取
 - 在 256 MB JVM 堆下，优化后 20 万行 × 15 列（36 MB）读取耗时 **1.44 s**、GC 后存活堆
   **56 MB**；基线在 20 万行时 OOM，10 万行时存活堆 155 MB、耗时 2.54 s。
 - 在真机 Xiaomi M531DA（Android 17 / API 37，256 MB 堆）上通过 adb 直接运行，10 万行
-  耗时 **1.85 s**、存活堆 **18 MB**；20 万行耗时 **3.66 s**、存活堆 **35 MB**，无 OOM。
+  耗时 **1.92 s**、存活堆 **18 MB**；20 万行耗时 **3.72 s**、存活堆 **35 MB**，无 OOM。
 - 50k 行数据上，`sum`、`mean`、`std`、`describe` 加速 **7–30×**，`sortValues` 加速
   **32.9×**，5k × 5k `merge` 加速 **30.9×**，`filterGreaterThan` 加速 **2.9×**。
 - 基线排序按字符串字典序进行且为 `O(n²)`，优化后按数值排序并保持 `O(n log n)`。
@@ -269,24 +269,42 @@ ANDROID_SERIAL=R8U8R8TGPZKFT8JB ./bench/run_android_adb.sh
 | 测试堆上限 | `Runtime.maxMemory() = 256 MB` |
 | GPU 驱动 | `com.mediatek.mt6899.gamedriver`（Stable Game Driver） |
 | 连接 | USB adb，`ANDROID_SERIAL=R8U8R8TGPZKFT8JB` |
+
 测试代码在设备 cache 中生成 15 列 CSV 后读取，结果由 `bench/parse_android_bench.py` 写入
 `bench/results/android_physical.csv`，原始 logcat 为
 `bench/results/android_M531DA_adb.log`。
 
 | 行数 | 读取时间 (ms) | GC 后存活堆 (MB) | 状态 |
 |---:|---:|---:|---|
-| 10k | 346 | 1 | ok |
-| 25k | 484 | 4 | ok |
-| 50k | 957 | 8 | ok |
-| 100k | 1851 | 18 | ok |
-| 200k | 3661 | 35 | ok |
+| 10k | 217 | 1 | ok |
+| 25k | 513 | 4 | ok |
+| 50k | 999 | 8 | ok |
+| 100k | 1923 | 18 | ok |
+| 200k | 3719 | 35 | ok |
 
 ![Android 真机读取时间与存活堆](bench/results/fig_android_physical.png)
 
+完整 ADB 实验不止 CSV：脚本不指定 `TEST_CLASS` 时会运行 test APK 内全部 instrumentation
+测试（CSV、pandas 一致性、JNI、NumPy 一致性、数值性能），本次 **8/8 通过，总耗时 11.392 s**。
+数值 kernel 的真机结果：
+
+| 操作 | Android JNI (ms) |
+| --- | ---: |
+| add, 1M | 10.30 |
+| sum, 1M | 0.92 |
+| matmul, 300×300 | 31.21 |
+| FFT, 1024 | 0.61 |
+| quantile, 1M | 124.57 |
+| OLS, 20k×5 | 25.75 |
+| convolve, 100k×16 | 2.09 |
+
+原始输出：`bench/results/android_adb_full_instrument.txt`、
+`bench/results/android_M531DA_numpy.log`。
+
 在真机 256 MB 堆下：
 
-- 20 万行 × 15 列读取 **3.66 s**，GC 后存活堆 **35 MB**；
-- 10 万行 **1.85 s / 18 MB**；
+- 20 万行 × 15 列读取 **3.72 s**，GC 后存活堆 **35 MB**；
+- 10 万行 **1.92 s / 18 MB**；
 - 所有档位均完成，无 OOM；
 - 真机比此前的模拟器结果快约 4×，说明模拟器的 CPU/IO 开销会显著放大绝对时间。
 
@@ -334,7 +352,7 @@ pandas 生成期望 JSON；JVM 使用 `bench/java/Consistency.java`，Android �
 
 新增 NDArray/SciPy 数值栈后，补充了独立实验：JVM Kotlin 回退、Android JNI 与 Python NumPy
 在相同输入上对比，并用 43 个参考指标验证一致性。JNI radix-2 FFT 相对 Kotlin DFT 回退提升
-约 62×，原生 matmul 让 OLS 从 46.9 ms 降至 13.7 ms；43/43 指标在 JVM 与 Android 通过。
+约 28×，原生 matmul 让 OLS 从 46.9 ms 降至 25.8 ms；43/43 指标在 JVM 与 Android 通过。
 完整方法、数据与复现命令见 [bench/NUMPY_SCIPY_BENCHMARK.md](bench/NUMPY_SCIPY_BENCHMARK.md)。
 
 ## 5. 讨论

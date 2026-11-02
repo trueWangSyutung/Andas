@@ -1,11 +1,12 @@
+# Physical phone benchmark: Xiaomi M531DA / MT6899 / Android 17 / 256 MB heap
 --------- beginning of main
-11-02 16:50:53.863  3560  3574 I AndasNumpyBench: maxMemory=192MB
-11-02 16:50:53.863  3560  3574 I AndasNumpyBench: add_1m,5.0752
-11-02 16:50:53.863  3560  3574 I AndasNumpyBench: sum_1m,1.3846
-11-02 16:50:53.864  3560  3574 I AndasNumpyBench: matmul_300,39.8538
-11-02 16:50:53.864  3560  3574 I AndasNumpyBench: fft_1024,0.2813
-11-02 16:50:53.864  3560  3574 I AndasNumpyBench: quantile_1m,109.3950
-11-02 16:50:53.864  3560  3574 I AndasNumpyBench: regression_20k_x5,13.6566
-11-02 16:50:53.864  3560  3574 I AndasNumpyBench: convolve_100k_x16,1.4652
-11-02 16:50:53.864  3560  3574 I AndasNumpyBench: normal_cdf_100k,9.8939
-11-02 16:50:53.864  3560  3574 I AndasNumpyBench: sink=3.539143265146453E7
+11-02 22:24:54.251 15861 15888 I AndasNumpyBench: maxMemory=256MB
+11-02 22:24:54.251 15861 15888 I AndasNumpyBench: add_1m,10.3024
+11-02 22:24:54.251 15861 15888 I AndasNumpyBench: sum_1m,0.9168
+11-02 22:24:54.251 15861 15888 I AndasNumpyBench: matmul_300,31.2120
+11-02 22:24:54.251 15861 15888 I AndasNumpyBench: fft_1024,0.6095
+11-02 22:24:54.251 15861 15888 I AndasNumpyBench: quantile_1m,124.5662
+11-02 22:24:54.251 15861 15888 I AndasNumpyBench: regression_20k_x5,25.7533
+11-02 22:24:54.251 15861 15888 I AndasNumpyBench: convolve_100k_x16,2.0945
+11-02 22:24:54.251 15861 15888 I AndasNumpyBench: normal_cdf_100k,11.0723
+11-02 22:24:54.251 15861 15888 I AndasNumpyBench: sink=3.539143265146453E7

@@ -67,7 +67,7 @@ Android 17 / API 37), driving the instrumentation test directly through adb, and
 pandas 2.1.0 on the same machine and datasets.  On the JVM, the optimized reader completes
 200k rows $\times$ 15 columns (36\,MB) in 1.44\,s with 56\,MB of retained heap, whereas the baseline
 fails with an out-of-memory error at the same size.  On the phone, the optimized reader completes
-200k rows in 3.66\,s with 35\,MB of retained heap; the baseline was not re-run on this phone
+200k rows in 3.72\,s with 35\,MB of retained heap; the baseline was not re-run on this phone
 because the legacy test APK is no longer built.  At 50k rows,
 statistical, sorting, and join operations improve by 7--33$\times$ over the baseline; filtering and
 grouped aggregation improve by 2.9$\times$ and 1.4$\times$, respectively.  Compared with pandas, the
@@ -544,11 +544,11 @@ Connection & USB adb, serial R8U8R8TGPZKFT8JB \\
 \toprule
 Rows & Read time (ms) & Retained heap (MB) \\
 \midrule
-10k  & 346  & 1 \\
-25k  & 484  & 4 \\
-50k  & 957  & 8 \\
-100k & 1851 & 18 \\
-200k & 3661 & 35 \\
+10k  & 217  & 1 \\
+25k  & 513  & 4 \\
+50k  & 999  & 8 \\
+100k & 1923 & 18 \\
+200k & 3719 & 35 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -557,12 +557,12 @@ Rows & Read time (ms) & Retained heap (MB) \\
 \centering
 \includegraphics[width=0.95\linewidth]{figures/fig_report_android.png}
 \caption{Physical phone results: (a) read time; (b) retained heap after GC.  The optimized reader
-completes 200k rows in 3.66\,s with 35\,MB retained.}
+completes 200k rows in 3.72\,s with 35\,MB retained.}
 \label{fig:android}
 \end{figure}
 
 The phone results confirm the JVM trend and directly address the original failure.  The optimized
-reader completes 100k rows in 1.85\,s with 18\,MB retained and 200k rows in 3.66\,s with 35\,MB
+reader completes 100k rows in 1.92\,s with 18\,MB retained and 200k rows in 3.72\,s with 35\,MB
 retained, without OOM under the 256\,MB heap.  The earlier emulator baseline OOM is retained only
 as historical evidence of the legacy design; the baseline was not rebuilt for this phone run.
 Absolute times are roughly four times faster than the emulator, showing that emulator CPU and I/O

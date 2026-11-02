@@ -1,0 +1,7 @@
+--------- beginning of main
+11-02 22:24:43.370 15861 15888 I ANDAS_BENCH: device=M531DA sdk=37 maxHeapMb=256
+11-02 22:24:43.963 15861 15888 I ANDAS_BENCH: read rows=10000 ms=217 retainedMb=1 status=ok shape=(10000, 15)
+11-02 22:24:44.865 15861 15888 I ANDAS_BENCH: read rows=25000 ms=513 retainedMb=4 status=ok shape=(25000, 15)
+11-02 22:24:46.281 15861 15888 I ANDAS_BENCH: read rows=50000 ms=999 retainedMb=8 status=ok shape=(50000, 15)
+11-02 22:24:48.643 15861 15888 I ANDAS_BENCH: read rows=100000 ms=1923 retainedMb=18 status=ok shape=(100000, 15)
+11-02 22:24:52.838 15861 15888 I ANDAS_BENCH: read rows=200000 ms=3719 retainedMb=35 status=ok shape=(200000, 15)

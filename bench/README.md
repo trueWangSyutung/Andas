@@ -102,11 +102,15 @@ export ANDROID_SERIAL=R8U8R8TGPZKFT8JB   # 你的手机 serial
 ./bench/run_android_adb.sh
 ```
 
+完整实验：不指定 `TEST_CLASS` 时运行 test APK 内全部 8 个 instrumentation 测试
+（CSV、pandas 一致性、JNI、NumPy 一致性、数值性能），本次 8/8 通过。
+
 脚本产出：
 
 - `bench/results/android_<MODEL>_adb.log`：原始 logcat；
 - `bench/results/android_physical.csv`：解析后的表；
-- `bench/results/android_adb_instrument.txt`：instrumentation 输出。
+- `bench/results/android_adb_full_instrument.txt`：完整 instrumentation 输出；
+- `bench/results/android_M531DA_numpy.log`：真机 JNI 数值性能。
 
 本次设备（adb 读取）：Xiaomi M531DA / MediaTek MT6899（8 核，最高 3.4 GHz）/
 ARM Mali-G720 MC8（OpenGL ES 3.2 + Vulkan）/ 11.6 GB RAM + 12 GB swap /
@@ -116,11 +120,11 @@ ARM Mali-G720 MC8（OpenGL ES 3.2 + Vulkan）/ 11.6 GB RAM + 12 GB swap /
 
 | rows | ms | retained MB |
 |---:|---:|---:|
-| 10k | 346 | 1 |
-| 25k | 484 | 4 |
-| 50k | 957 | 8 |
-| 100k | 1851 | 18 |
-| 200k | 3661 | 35 |
+| 10k | 217 | 1 |
+| 25k | 513 | 4 |
+| 50k | 999 | 8 |
+| 100k | 1923 | 18 |
+| 200k | 3719 | 35 |
 
 基线的 Android 数据：把同一个测试文件复制到 `.baseline/android-pandas/src/androidTest/`
 后，在 `.baseline/` 目录执行同样的 Gradle 命令。

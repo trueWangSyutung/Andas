@@ -7,7 +7,7 @@
 | 场景 | 基线 | 0.1.5 | 说明 |
 | --- | ---: | ---: | --- |
 | JVM 读取 20 万行 | OOM | 1.44 s / 56 MB | 读取后 GC 存活堆 |
-| Android 读取 20 万行 | OOM（10 万行即失败） | 3.66 s / 35 MB | Xiaomi M531DA / MT6899 / Android 17 / adb |
+| Android 读取 20 万行 | OOM（10 万行即失败） | 3.72 s / 35 MB | Xiaomi M531DA / MT6899 / Android 17 / adb |
 | 50k `sum` | 30 ms | 1 ms | 30× |
 | 50k `sortValues` | 2629 ms | 80 ms | 32.9× |
 | 5k × 5k `merge` | 557 ms | 18 ms | 30.9× |

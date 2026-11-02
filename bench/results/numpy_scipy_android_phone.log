@@ -1,0 +1,11 @@
+--------- beginning of main
+11-02 22:24:54.251 15861 15888 I AndasNumpyBench: maxMemory=256MB
+11-02 22:24:54.251 15861 15888 I AndasNumpyBench: add_1m,10.3024
+11-02 22:24:54.251 15861 15888 I AndasNumpyBench: sum_1m,0.9168
+11-02 22:24:54.251 15861 15888 I AndasNumpyBench: matmul_300,31.2120
+11-02 22:24:54.251 15861 15888 I AndasNumpyBench: fft_1024,0.6095
+11-02 22:24:54.251 15861 15888 I AndasNumpyBench: quantile_1m,124.5662
+11-02 22:24:54.251 15861 15888 I AndasNumpyBench: regression_20k_x5,25.7533
+11-02 22:24:54.251 15861 15888 I AndasNumpyBench: convolve_100k_x16,2.0945
+11-02 22:24:54.251 15861 15888 I AndasNumpyBench: normal_cdf_100k,11.0723
+11-02 22:24:54.251 15861 15888 I AndasNumpyBench: sink=3.539143265146453E7

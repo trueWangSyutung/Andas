@@ -12,7 +12,7 @@
 | 主机 | Apple M2, macOS 27.0.1 |
 | Python | 3.10.11, NumPy 1.26.0 |
 | JVM | OpenJDK 21.0.12, `-Xmx2g` |
-| Android | 模拟器 API 37 ARM64, 192 MB heap |
+| Android | 真机 Xiaomi M531DA / MT6899 / ARM Mali-G720 MC8, Android 17/API 37, 256 MB heap |
 | 构建 | AGP 8.13.2, Kotlin 2.2.20, NDK arm64-v8a |
 
 ## 方法
@@ -27,21 +27,21 @@
 
 | 操作 | NumPy (ms) | JVM 回退 (ms) | Android JNI (ms) | Android/NumPy |
 | --- | ---: | ---: | ---: | ---: |
-| add, 1M | 0.95 | 8.65 | 5.08 | 5.3× |
-| sum, 1M | 0.22 | 2.03 | 1.38 | 6.4× |
-| matmul, 300×300 | 34.49 | 32.80 | 39.85 | 1.2× |
-| FFT, 1024 | 0.008 | 17.36 | 0.28 | 34× |
-| quantile, 1M | 32.90 | 92.30 | 109.40 | 3.3× |
-| OLS, 20k×5 | 1.00 | 46.92 | 13.66 | 13.7× |
-| convolve, 100k×16 | 0.75 | 4.52 | 1.47 | 1.9× |
+| add, 1M | 0.95 | 8.65 | 10.30 | 10.8× |
+| sum, 1M | 0.22 | 2.03 | 0.92 | 4.2× |
+| matmul, 300×300 | 34.49 | 32.80 | 31.21 | 0.9× |
+| FFT, 1024 | 0.008 | 17.36 | 0.61 | 73.9× |
+| quantile, 1M | 32.90 | 92.30 | 124.57 | 3.8× |
+| OLS, 20k×5 | 1.00 | 46.92 | 25.75 | 25.9× |
+| convolve, 100k×16 | 0.75 | 4.52 | 2.09 | 2.8× |
 
 关键结论：
 
-- JNI radix-2 FFT 相对 Kotlin DFT 回退提升 **62×**（17.36 ms → 0.28 ms），消除了 O(n²) 瓶颈；
-- 原生 matmul 让 OLS 从 46.9 ms 降到 13.7 ms（3.4×）；
+- JNI radix-2 FFT 相对 Kotlin DFT 回退提升约 **28×**（17.36 ms → 0.61 ms），消除了 O(n²) 瓶颈；
+- 原生 matmul 让 OLS 从 46.9 ms 降到 25.8 ms（1.8×）；
 - 300×300 matmul 已与 NumPy 同量级，说明正常数级矩阵乘法不再需要额外优化；
 - 逐元素 add/sum 仍受 JVM/Kotlin 调用与装箱影响，适合后续用批量 primitive kernel 进一步压缩；
-- Android 模拟器 CPU 与 192 MB 堆限制会放大分配/GC 成本，绝对时间不能直接与桌面 NumPy 对比。
+- 真机 CPU/GPU、热节流与 256 MB 测试堆会放大分配/GC 成本，绝对时间不能直接与桌面 NumPy 对比。
 
 ## 一致性
 
@@ -71,9 +71,11 @@ java -Xmx2g -cp "android-pandas/build/tmp/kotlin-classes/debug:$KOTLIN_STDLIB:be
 
 # Android JNI
 adb logcat -c
-./gradlew :android-pandas:connectedDebugAndroidTest \
-  -Pandroid.testInstrumentationRunnerArguments.class=cn.ac.oac.libs.andas.NumpyPerfInstrumentedTest
-adb logcat -d -s AndasNumpyBench:I
+TEST_CLASS=cn.ac.oac.libs.andas.NumpyPerfInstrumentedTest ./bench/run_android_adb.sh
+# 或 adb 直接执行：
+# adb -s $ANDROID_SERIAL shell am instrument -w -r \
+#   -e class cn.ac.oac.libs.andas.NumpyPerfInstrumentedTest \
+#   cn.ac.oac.libs.andas.test/androidx.test.runner.AndroidJUnitRunner
 
 # 一致性
 ./gradlew :android-pandas:testDebugUnitTest --tests '*NumpyConsistencyTest'

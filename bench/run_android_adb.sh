@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# 在已连接的真机上通过 adb 直接安装并运行 CSV 读取性能测试（默认拒绝模拟器）。
+# 在已连接的真机上通过 adb 直接安装并运行完整 Android 实验（CSV/一致性/JNI/数值）。
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APK="$ROOT/android-pandas/build/outputs/apk/androidTest/debug/android-pandas-debug-androidTest.apk"
 RUNNER="cn.ac.oac.libs.andas.test/androidx.test.runner.AndroidJUnitRunner"
-TEST_CLASS="cn.ac.oac.libs.andas.CsvBenchInstrumentedTest"
+TEST_CLASS="${TEST_CLASS:-}"
 
 SERIAL="${ANDROID_SERIAL:-}"
 if [[ -z "$SERIAL" ]]; then
@@ -32,21 +32,29 @@ if [[ "${REBUILD:-1}" == "1" || ! -f "$APK" ]]; then
   export ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
   export ANDROID_USER_HOME="${ANDROID_USER_HOME:-$ROOT/.android-home}"
   export GRADLE_USER_HOME="${GRADLE_USER_HOME:-$ROOT/.gradle-home}"
-  "$ROOT/gradlew" :android-pandas:assembleDebugAndroidTest --offline --no-daemon --console=plain
+  "$ROOT/gradlew" :android-pandas:assembleDebugAndroidTest --no-daemon --console=plain ${GRADLE_ARGS:-}
 fi
 
 adb -s "$SERIAL" install -r -t "$APK" >/dev/null
 adb -s "$SERIAL" logcat -c
 
 set +e
-adb -s "$SERIAL" shell am instrument -w -r \
-  -e class "$TEST_CLASS" "$RUNNER" | tee "$ROOT/bench/results/android_adb_instrument.txt"
+if [[ -n "$TEST_CLASS" ]]; then
+  adb -s "$SERIAL" shell am instrument -w -r -e class "$TEST_CLASS" "$RUNNER" \
+    | tee "$ROOT/bench/results/android_adb_instrument.txt"
+else
+  adb -s "$SERIAL" shell am instrument -w -r "$RUNNER" \
+    | tee "$ROOT/bench/results/android_adb_instrument.txt"
+fi
 STATUS=${PIPESTATUS[0]}
 set -e
 
 LOG="$ROOT/bench/results/android_${MODEL// /_}_adb.log"
-adb -s "$SERIAL" logcat -d -s ANDAS_BENCH:I > "$LOG"
-python3 "$ROOT/bench/parse_android_bench.py" "$LOG" "$ROOT/bench/results/android_physical.csv"
+adb -s "$SERIAL" logcat -d > "$LOG"
+adb -s "$SERIAL" logcat -d -s ANDAS_BENCH:I > "$ROOT/bench/results/android_${MODEL// /_}_bench.log"
+adb -s "$SERIAL" logcat -d -s AndasNumpyBench:I > "$ROOT/bench/results/android_${MODEL// /_}_numpy.log"
+python3 "$ROOT/bench/parse_android_bench.py" "$ROOT/bench/results/android_${MODEL// /_}_bench.log" "$ROOT/bench/results/android_physical.csv"
+cp "$ROOT/bench/results/android_adb_instrument.txt" "$ROOT/bench/results/android_adb_full_instrument.txt"
 echo "raw log: $LOG"
 echo "csv: $ROOT/bench/results/android_physical.csv"
 exit "$STATUS"
