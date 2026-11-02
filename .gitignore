@@ -57,3 +57,4 @@ report/*.synctex.gz
 .avd/
 site/docs/benchmark/numeric.md
 bench/java/out/
+app/release/andas-demo-*.apk
